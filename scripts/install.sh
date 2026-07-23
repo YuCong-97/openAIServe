@@ -9,11 +9,19 @@ INCLUDE_OPTIONAL="false"
 START_AFTER="false"
 
 # Linux deployment defaults are tuned for RTX 3090 hosts on restricted China networks.
-export OLLAMA_PULL_FALLBACK="${OLLAMA_PULL_FALLBACK:-false}"
-export MODEL_DIRECT_URL_TEMPLATES="${MODEL_DIRECT_URL_TEMPLATES:-https://modelscope.cn/models/{repo_id}/resolve/master/{filename}}"
-export HF_ENDPOINTS="${HF_ENDPOINTS:-https://hf-mirror.com https://huggingface.co}"
-export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
-export OLLAMA_MODELS="${OLLAMA_MODELS:-$ROOT/deps/ollama-store}"
+set_default_env() {
+  local name="$1"
+  local value="$2"
+  if [[ -z "${!name-}" ]]; then
+    export "$name=$value"
+  fi
+}
+
+set_default_env OLLAMA_PULL_FALLBACK "false"
+set_default_env MODEL_DIRECT_URL_TEMPLATES "https://modelscope.cn/models/{repo_id}/resolve/master/{filename}"
+set_default_env HF_ENDPOINTS "https://hf-mirror.com https://huggingface.co"
+set_default_env PIP_INDEX_URL "https://pypi.tuna.tsinghua.edu.cn/simple"
+set_default_env OLLAMA_MODELS "$ROOT/deps/ollama-store"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

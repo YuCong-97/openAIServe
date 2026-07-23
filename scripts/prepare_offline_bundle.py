@@ -70,7 +70,13 @@ def render_direct_url(template: str, repo_id: str, filename: str) -> str:
         "filename": urllib.parse.quote(filename, safe="/"),
         "basename": urllib.parse.quote(Path(filename).name, safe=""),
     }
-    return template.format(**values)
+    try:
+        return template.format(**values)
+    except (KeyError, ValueError) as exc:
+        raise SystemExit(
+            f"Invalid MODEL_DIRECT_URL_TEMPLATES entry {template!r}: {exc}. "
+            "Use placeholders {repo_id}, {filename}, and {basename} only."
+        ) from exc
 
 
 def direct_urls(item: dict[str, Any], repo_filename: str | None) -> list[str]:

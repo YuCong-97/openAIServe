@@ -139,8 +139,11 @@ def render_direct_url(template: str, repo_id: str, filename: str) -> str:
     }
     try:
         return template.format(**values)
-    except KeyError as exc:
-        raise SystemExit(f"Unknown placeholder in MODEL_DIRECT_URL_TEMPLATES entry {template!r}: {exc}") from exc
+    except (KeyError, ValueError) as exc:
+        raise SystemExit(
+            f"Invalid MODEL_DIRECT_URL_TEMPLATES entry {template!r}: {exc}. "
+            "Use placeholders {repo_id}, {filename}, and {basename} only."
+        ) from exc
 
 
 def direct_urls(item: dict[str, Any], repo_filename: str | None) -> list[str]:
