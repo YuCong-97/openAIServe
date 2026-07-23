@@ -52,6 +52,49 @@ bash scripts/start.sh --components all
 
 默认服务地址：`http://127.0.0.1:8000`
 
+## 外部调用
+
+公网访问时启动到 `0.0.0.0`，只需要放行 API 端口 `8000`：
+
+```bash
+export OPENAISERVE_API_KEY="your-key"
+bash scripts/start.sh --components all --host 0.0.0.0 --port 8000
+```
+
+云服务器安全组/防火墙放行入站 `TCP 8000` 后，外部客户端使用：
+
+```text
+http://服务器公网IP:8000
+```
+
+健康检查不需要 key：
+
+```bash
+curl http://服务器公网IP:8000/health
+```
+
+OpenAI 兼容接口需要 Bearer key：
+
+```bash
+curl http://服务器公网IP:8000/v1/models \
+  -H "Authorization: Bearer your-key"
+```
+
+```bash
+curl http://服务器公网IP:8000/v1/chat/completions \
+  -H "Authorization: Bearer your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen3:30b","messages":[{"role":"user","content":"写一个三行部署说明"}]}'
+```
+
+后台启动：
+
+```bash
+mkdir -p logs
+export OPENAISERVE_API_KEY="your-key"
+nohup bash scripts/start.sh --components all --host 0.0.0.0 --port 8000 > logs/openaiserve.log 2>&1 &
+```
+
 ## LoRA
 
 LoRA 文件放到：
@@ -102,12 +145,18 @@ curl http://127.0.0.1:8000/v1/videos/generations \
   -d '{"model":"comfyui-video","characters":["protagonist","supporting_a"],"prompt":"two characters walk through a rainy neon street","frames":33,"response_format":"url"}'
 ```
 
-## 鉴权
+## 鉴权配置
 
-本地默认允许无 key。生产环境设置：
+本地默认允许无 key。公网使用时建议设置 `OPENAISERVE_API_KEY`，并在启动服务前导出：
 
 ```bash
 export OPENAISERVE_API_KEY="your-key"
+```
+
+外部请求时带上：
+
+```bash
+-H "Authorization: Bearer your-key"
 ```
 
 或在 `config.yaml` 中配置：
