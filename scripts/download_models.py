@@ -223,7 +223,25 @@ def download_direct_file(url: str, target: Path) -> None:
         raise
 
 
-def download_file_item(item: dict[str, Any], target_dir: Path, label: str = "hf") -> Path:
+def copy_or_link_file(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if source.resolve() == target.resolve():
+            return
+    except OSError:
+        pass
+    try:
+        os.link(source, target)
+    except OSError:
+        shutil.copy2(source, target)
+
+
+def download_file_item(
+    item: dict[str, Any],
+    target_dir: Path,
+    label: str = "hf",
+    local_candidates: list[Path] | None = None,
+) -> Path:
     repo_id = str(item.get("repo_id") or "")
     repo_filename = item.get("repo_filename") or item.get("filename")
     local_filename = item.get("local_filename") or (Path(repo_filename).name if repo_filename else None)
@@ -235,6 +253,11 @@ def download_file_item(item: dict[str, Any], target_dir: Path, label: str = "hf"
         if expected.exists():
             print(f"[{label}] exists {expected}")
             return expected
+        for candidate in local_candidates or []:
+            if candidate.exists():
+                print(f"[{label}] using local file {candidate} -> {expected}")
+                copy_or_link_file(candidate, expected)
+                return expected
         for url in direct_urls(item, repo_filename):
             try:
                 print(f"[direct] downloading {url} -> {expected}")
@@ -275,6 +298,19 @@ def download_file_item(item: dict[str, Any], target_dir: Path, label: str = "hf"
 
 def download_hf_item(item: dict[str, Any], target_dir: Path) -> None:
     download_file_item(item, target_dir)
+
+
+def comfy_local_model_candidates(target: str, filename: str | None) -> list[Path]:
+    if not filename:
+        return []
+
+    target = target.strip("/\\")
+    candidates = []
+    for base in (ROOT_DIR / "packages" / "comfyui-models", ROOT_DIR / "downloads" / "comfyui-models"):
+        if target:
+            candidates.append(base / target / filename)
+        candidates.append(base / filename)
+    return candidates
 
 
 def normalize_ollama_model(item: str | dict[str, Any]) -> dict[str, Any]:
@@ -429,9 +465,16 @@ def download_comfy_models(config: dict[str, Any], items: list[dict[str, Any]], i
         if item.get("optional") and not include_optional:
             print(f"[comfyui] skipping optional model {item.get('id')}")
             continue
-        target = item.get("target", "checkpoints")
+        target = str(item.get("target", "checkpoints"))
         target_dir = resolve_path(target, models_root)
-        download_hf_item(item, target_dir)
+        repo_filename = item.get("repo_filename") or item.get("filename")
+        local_filename = item.get("local_filename") or (Path(repo_filename).name if repo_filename else None)
+        download_file_item(
+            item,
+            target_dir,
+            label="comfyui",
+            local_candidates=comfy_local_model_candidates(target, str(local_filename) if local_filename else None),
+        )
 
 
 def download_cosyvoice_models(items: list[dict[str, Any]], include_optional: bool) -> None:

@@ -12,6 +12,7 @@ START_AFTER="false"
 export OLLAMA_PULL_FALLBACK="${OLLAMA_PULL_FALLBACK:-false}"
 export MODEL_DIRECT_URL_TEMPLATES="${MODEL_DIRECT_URL_TEMPLATES:-https://modelscope.cn/models/{repo_id}/resolve/master/{filename}}"
 export HF_ENDPOINTS="${HF_ENDPOINTS:-https://hf-mirror.com https://huggingface.co}"
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -172,6 +173,64 @@ pip_install_with_retries() {
     sleep $((attempt * 5))
   done
   return 1
+}
+
+has_wheels() {
+  local dir="$1"
+  [[ -d "$dir" ]] && compgen -G "$dir/*.whl" >/dev/null
+}
+
+pip_install_from_wheelhouses() {
+  local python_bin="$1"
+  shift
+  local dirs=()
+  while [[ $# -gt 0 && "$1" != "--" ]]; do
+    dirs+=("$1")
+    shift
+  done
+  if [[ $# -gt 0 && "$1" == "--" ]]; then
+    shift
+  fi
+
+  local wheelhouse_args=()
+  local dir
+  for dir in "${dirs[@]}"; do
+    if has_wheels "$dir"; then
+      wheelhouse_args+=(--find-links "$dir")
+    fi
+  done
+  if [[ "${#wheelhouse_args[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  echo "[pip] installing from local wheelhouse(s): ${dirs[*]}"
+  "$python_bin" -m pip install --no-index "${wheelhouse_args[@]}" "$@"
+}
+
+pip_install_local_first() {
+  local python_bin="$1"
+  shift
+  local dirs=()
+  while [[ $# -gt 0 && "$1" != "--" ]]; do
+    dirs+=("$1")
+    shift
+  done
+  if [[ $# -gt 0 && "$1" == "--" ]]; then
+    shift
+  fi
+
+  if pip_install_from_wheelhouses "$python_bin" "${dirs[@]}" -- "$@"; then
+    return
+  fi
+  pip_install_with_retries "$python_bin" "$@"
+}
+
+upgrade_pip_best_effort() {
+  local python_bin="$1"
+  shift
+  pip_install_from_wheelhouses "$python_bin" "$@" -- --upgrade pip setuptools wheel >/dev/null 2>&1 ||
+    "$python_bin" -m pip install --upgrade pip >/dev/null 2>&1 ||
+    echo "[pip] skipping pip upgrade"
 }
 
 git_with_retries() {
@@ -341,6 +400,58 @@ update_comfyui() {
   return 1
 }
 
+install_comfyui_from_local_source() {
+  local comfy_dir="$1"
+  local candidates=()
+  if [[ -n "${COMFYUI_SOURCE_DIR:-}" ]]; then
+    candidates+=("$COMFYUI_SOURCE_DIR")
+  fi
+  if [[ -n "${COMFYUI_SOURCE_ARCHIVE:-}" ]]; then
+    candidates+=("$COMFYUI_SOURCE_ARCHIVE")
+  fi
+  candidates+=(
+    "$ROOT/packages/repos/ComfyUI"
+    "$ROOT/packages/repos/ComfyUI.tar.gz"
+    "$ROOT/downloads/repos/ComfyUI"
+    "$ROOT/downloads/repos/ComfyUI.tar.gz"
+  )
+
+  local source
+  for source in "${candidates[@]}"; do
+    if [[ -d "$source" ]]; then
+      local tmp_dir="$comfy_dir.local.$$"
+      rm -rf "$tmp_dir"
+      echo "[comfyui] installing local source $source"
+      mkdir -p "$(dirname "$comfy_dir")"
+      mkdir -p "$tmp_dir"
+      cp -a "$source/." "$tmp_dir/"
+      mv "$tmp_dir" "$comfy_dir"
+      return
+    fi
+
+    if [[ -f "$source" ]]; then
+      local extract_dir
+      extract_dir="$(mktemp -d)"
+      echo "[comfyui] extracting local source archive $source"
+      if tar -xzf "$source" -C "$extract_dir"; then
+        local extracted="$extract_dir/ComfyUI"
+        if [[ ! -d "$extracted" ]]; then
+          extracted="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+        fi
+        if [[ -n "$extracted" && -d "$extracted" ]]; then
+          mkdir -p "$(dirname "$comfy_dir")"
+          mv "$extracted" "$comfy_dir"
+          rm -rf "$extract_dir"
+          return
+        fi
+      fi
+      rm -rf "$extract_dir"
+    fi
+  done
+
+  return 1
+}
+
 torch_packages() {
   if [[ -n "${TORCH_PACKAGES:-}" ]]; then
     read -r -a packages <<<"$TORCH_PACKAGES"
@@ -383,6 +494,21 @@ install_torch() {
     fi
     echo "Custom TORCH_INSTALL_CMD completed, but torch runtime check still failed." >&2
     return 1
+  fi
+
+  local local_wheel_dirs=(
+    "$ROOT/packages/wheels/torch-$variant"
+    "$ROOT/packages/wheels/torch"
+  )
+  if [[ "$variant" != "cu124" ]]; then
+    local_wheel_dirs+=("$ROOT/packages/wheels/torch-cu124")
+  fi
+  if pip_install_from_wheelhouses "$python_bin" "${local_wheel_dirs[@]}" -- --upgrade --force-reinstall "${packages[@]}"; then
+    if torch_runtime_ok "$python_bin"; then
+      return
+    fi
+    echo "[comfyui] local torch wheels installed but runtime check failed; trying mirror indexes" >&2
+    "$python_bin" -m pip uninstall -y torch torchvision torchaudio >/dev/null 2>&1 || true
   fi
 
   local indexes=()
@@ -614,8 +740,8 @@ install_server() {
   if [[ ! -x "$ROOT/.venv/bin/python" ]]; then
     python_cmd -m venv "$ROOT/.venv"
   fi
-  "$ROOT/.venv/bin/python" -m pip install --upgrade pip
-  "$ROOT/.venv/bin/python" -m pip install -r "$ROOT/requirements.txt"
+  upgrade_pip_best_effort "$ROOT/.venv/bin/python" "$ROOT/packages/wheels/server"
+  pip_install_local_first "$ROOT/.venv/bin/python" "$ROOT/packages/wheels/server" -- -r "$ROOT/requirements.txt"
   if [[ ! -f "$ROOT/config.yaml" ]]; then
     cp "$ROOT/config.example.yaml" "$ROOT/config.yaml"
     echo "[server] created config.yaml from config.example.yaml"
@@ -672,17 +798,31 @@ install_comfyui() {
   echo "[comfyui] installing ComfyUI"
   mkdir -p "$ROOT/deps"
   if [[ ! -d "$ROOT/deps/ComfyUI" ]]; then
-    clone_comfyui "$ROOT/deps/ComfyUI"
+    install_comfyui_from_local_source "$ROOT/deps/ComfyUI" || clone_comfyui "$ROOT/deps/ComfyUI"
   else
-    update_comfyui "$ROOT/deps/ComfyUI"
+    update_comfyui "$ROOT/deps/ComfyUI" || echo "[comfyui] update failed; using existing local checkout"
   fi
 
   if [[ ! -x "$ROOT/deps/ComfyUI/.venv/bin/python" ]]; then
     python_cmd -m venv "$ROOT/deps/ComfyUI/.venv"
   fi
-  "$ROOT/deps/ComfyUI/.venv/bin/python" -m pip install --upgrade pip
-  install_torch "$ROOT/deps/ComfyUI/.venv/bin/python"
-  "$ROOT/deps/ComfyUI/.venv/bin/python" -m pip install -r "$ROOT/deps/ComfyUI/requirements.txt"
+  local comfy_python="$ROOT/deps/ComfyUI/.venv/bin/python"
+  local torch_variant
+  torch_variant="$(torch_cuda_variant)"
+  upgrade_pip_best_effort "$comfy_python" \
+    "$ROOT/packages/wheels/comfyui" \
+    "$ROOT/packages/wheels/server" \
+    "$ROOT/packages/wheels/torch-$torch_variant" \
+    "$ROOT/packages/wheels/torch-cu124" \
+    "$ROOT/packages/wheels/torch"
+  install_torch "$comfy_python"
+  pip_install_local_first "$comfy_python" \
+    "$ROOT/packages/wheels/comfyui" \
+    "$ROOT/packages/wheels/server" \
+    "$ROOT/packages/wheels/torch-$torch_variant" \
+    "$ROOT/packages/wheels/torch-cu124" \
+    "$ROOT/packages/wheels/torch" \
+    -- -r "$ROOT/deps/ComfyUI/requirements.txt"
 }
 
 install_linux_prereqs

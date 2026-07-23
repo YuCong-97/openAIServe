@@ -5,10 +5,20 @@ Linux 一键部署的 OpenAI 兼容供应商服务器：
 - 文本生成：Ollama
 - 图片生成：ComfyUI，默认 Flux schnell FP8，备选 SDXL
 - 视频生成：ComfyUI，RTX 3090 默认 Wan2.1 T2V 1.3B 工作流
-- 角色锁定：图片与视频均支持多角色 LoRA
+- 角色锁定：图片与视频都支持多角色 LoRA
 - 音频生成：预留 CosyVoice 3 provider
 
-## 快速开始
+## 本机准备离线包
+
+在网络更快的本机执行：
+
+```bash
+python scripts/prepare_offline_bundle.py --components all --profile rtx3090 --torch-variant cu124
+```
+
+生成的 `packages/` 包含 Ollama Linux 安装包、Ollama GGUF、ComfyUI 源码包、ComfyUI 模型和 Linux Python wheels。把项目和 `packages/` 一起上传到云服务器即可。
+
+## 云端部署
 
 完整部署并启动：
 
@@ -36,21 +46,6 @@ bash scripts/start.sh --components all
 
 默认服务地址：`http://127.0.0.1:8000`
 
-## 内置默认
-
-- Linux-only 部署，安装脚本自动检查并安装基础依赖。
-- 国内网络优先：Ollama、ComfyUI、PyTorch、Ollama GGUF、ComfyUI 模型下载源已写入脚本和 `config.yaml`。
-- Ollama 模型默认使用 ModelScope GGUF 下载后 `ollama create`，不默认访问 `registry.ollama.ai`。
-- 大文件下载默认支持断点续传。
-- 离线包目录：`packages/`、`downloads/`、`deps/ollama-models/`、`packages/ollama-models/`。
-
-RTX 3090 profile 默认：
-
-- 文本：`qwen3:30b`
-- 代码：`qwen2.5-coder:32b`
-- 图片：Flux schnell FP8 / SDXL
-- 视频：Wan2.1 T2V 1.3B，832x480，33 frames
-
 ## LoRA
 
 LoRA 文件放到：
@@ -59,7 +54,7 @@ LoRA 文件放到：
 deps/ComfyUI/models/loras
 ```
 
-`config.yaml` 中按模型族配置角色 LoRA：
+`config.yaml` 中按模型家族配置角色 LoRA：
 
 ```yaml
 characters:

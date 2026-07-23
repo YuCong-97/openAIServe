@@ -22,6 +22,7 @@ AI agents should treat this repository as a Linux-only one-command OpenAI-compat
 
 - `scripts/install.sh`: Linux installer
 - `scripts/start.sh`: Linux starter
+- `scripts/prepare_offline_bundle.py`: local offline bundle preparer for Linux deployment assets
 - `scripts/download_models.py`: Ollama/ComfyUI model downloader
 - `openaiserve/app.py`: FastAPI OpenAI-compatible API
 - `openaiserve/providers/ollama.py`: Ollama provider
@@ -30,6 +31,12 @@ AI agents should treat this repository as a Linux-only one-command OpenAI-compat
 - `config.yaml`: RTX 3090 default runtime config
 
 ## Commands
+
+Prepare offline bundle locally:
+
+```bash
+python scripts/prepare_offline_bundle.py --components all --profile rtx3090 --torch-variant cu124
+```
 
 Full deployment:
 
@@ -62,6 +69,7 @@ bash scripts/start.sh --components all
 - Ollama registry pulls are disabled by default.
 - ComfyUI clone: GitCode/Gitee first, GitHub fallback.
 - PyTorch wheels: Aliyun/NJU first, official fallback.
+- Local offline bundle: `packages/ollama-linux-*.tar.zst`, `packages/repos/ComfyUI(.tar.gz)`, `packages/wheels/*`, `packages/ollama-models/*`, and `packages/comfyui-models/*` are preferred before network downloads.
 - ComfyUI models: ModelScope direct URLs in `config.yaml`, Hugging Face fallback.
 
 ## Verify
