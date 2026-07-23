@@ -199,6 +199,7 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 - If Linux deployment fails with `python: command not found`, pull the latest repository version and rerun `bash scripts/install.sh ...`; older installers did not auto-install Python.
 - If apt fails with `File has unexpected size` or `Mirror sync in progress`, pull the latest repository version and rerun. The installer retries apt with `--fix-missing`; if the mirror keeps failing, wait a few minutes or switch `/etc/apt/sources.list` to another Ubuntu mirror.
 - If Ollama install fails with `Failed to connect to ollama.com port 443`, pull the latest repository version and rerun. The installer falls back to GitHub releases; for restricted networks, set `OLLAMA_INSTALL_URL=https://your-mirror/ollama-linux-amd64.tar.zst`.
+- If Torch install fails because `download.pytorch.org` is unreachable, rerun with `TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128` or set `TORCH_INSTALL_CMD` to a fully custom command using `$COMFYUI_PYTHON`.
 - If image/video generation fails, verify ComfyUI is running at `http://127.0.0.1:8188`.
 - If ComfyUI reports missing nodes, update ComfyUI and confirm the installed version includes Wan video nodes.
 - If ComfyUI reports missing models, compare `config.yaml` model file names with files under `deps/ComfyUI/models`.

@@ -154,6 +154,19 @@ download_with_retries() {
   return 1
 }
 
+pip_install_with_retries() {
+  local python_bin="$1"
+  shift
+  for attempt in 1 2; do
+    if "$python_bin" -m pip install --timeout 60 --retries 2 "$@"; then
+      return
+    fi
+    echo "[pip] failed attempt $attempt/2: $*" >&2
+    sleep $((attempt * 5))
+  done
+  return 1
+}
+
 python_cmd() {
   if command -v python3 >/dev/null 2>&1; then
     python3 "$@"
@@ -163,6 +176,61 @@ python_cmd() {
     echo "Neither python3 nor python is available. Install Python 3 and rerun this script." >&2
     exit 1
   fi
+}
+
+torch_packages() {
+  if [[ -n "${TORCH_PACKAGES:-}" ]]; then
+    read -r -a packages <<<"$TORCH_PACKAGES"
+  else
+    packages=(torch torchvision torchaudio)
+  fi
+}
+
+install_torch() {
+  local python_bin="$1"
+  if "$python_bin" -c "import torch" >/dev/null 2>&1; then
+    echo "[comfyui] torch already installed"
+    return
+  fi
+
+  local packages
+  torch_packages
+  packages=("${packages[@]}")
+
+  if [[ -n "${TORCH_INSTALL_CMD:-}" ]]; then
+    echo "[comfyui] running custom TORCH_INSTALL_CMD"
+    COMFYUI_PYTHON="$python_bin" sh -c "$TORCH_INSTALL_CMD"
+    return
+  fi
+
+  local indexes=()
+  if [[ -n "${TORCH_INDEX_URL:-}" ]]; then
+    indexes+=("$TORCH_INDEX_URL")
+  else
+    indexes+=(
+      "https://download.pytorch.org/whl/cu128"
+      "https://mirrors.aliyun.com/pytorch-wheels/cu128"
+      "https://mirror.nju.edu.cn/pytorch/whl/cu128"
+      "https://download.pytorch.org/whl/cu126"
+      "https://mirrors.aliyun.com/pytorch-wheels/cu126"
+      "https://mirror.nju.edu.cn/pytorch/whl/cu126"
+    )
+  fi
+
+  for index_url in "${indexes[@]}"; do
+    echo "[comfyui] installing torch from $index_url"
+    if pip_install_with_retries "$python_bin" "${packages[@]}" --index-url "$index_url"; then
+      return
+    fi
+  done
+
+  echo "[comfyui] torch index installs failed; trying default pip index" >&2
+  if pip_install_with_retries "$python_bin" "${packages[@]}"; then
+    return
+  fi
+
+  echo "Torch install failed. Set TORCH_INDEX_URL to a reachable PyTorch wheel mirror or set TORCH_INSTALL_CMD for a custom install command." >&2
+  return 1
 }
 
 ollama_archive_name() {
@@ -261,7 +329,7 @@ install_comfyui() {
     python_cmd -m venv "$ROOT/deps/ComfyUI/.venv"
   fi
   "$ROOT/deps/ComfyUI/.venv/bin/python" -m pip install --upgrade pip
-  "$ROOT/deps/ComfyUI/.venv/bin/python" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+  install_torch "$ROOT/deps/ComfyUI/.venv/bin/python"
   "$ROOT/deps/ComfyUI/.venv/bin/python" -m pip install -r "$ROOT/deps/ComfyUI/requirements.txt"
 }
 
