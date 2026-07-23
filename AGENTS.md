@@ -66,6 +66,7 @@ bash scripts/start.sh --components all
 
 - Ollama install: local archive, ModelScope archive, `ollama.ac.cn`, GitHub, then script fallback.
 - Ollama models: ModelScope GGUF direct downloads, then `ollama create`.
+- Ollama model store: `OLLAMA_MODELS` defaults to `deps/ollama-store`; GGUF files are hardlinked into the blob store before create when possible.
 - Ollama registry pulls are disabled by default.
 - ComfyUI clone: GitCode/Gitee first, GitHub fallback.
 - PyTorch wheels: Aliyun/NJU first, official fallback.

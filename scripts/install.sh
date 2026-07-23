@@ -13,6 +13,7 @@ export OLLAMA_PULL_FALLBACK="${OLLAMA_PULL_FALLBACK:-false}"
 export MODEL_DIRECT_URL_TEMPLATES="${MODEL_DIRECT_URL_TEMPLATES:-https://modelscope.cn/models/{repo_id}/resolve/master/{filename}}"
 export HF_ENDPOINTS="${HF_ENDPOINTS:-https://hf-mirror.com https://huggingface.co}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+export OLLAMA_MODELS="${OLLAMA_MODELS:-$ROOT/deps/ollama-store}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -655,6 +656,8 @@ install_ollama_from_archive() {
 }
 
 configure_ollama_service() {
+  mkdir -p "$OLLAMA_MODELS"
+
   if ! command -v systemctl >/dev/null 2>&1 || [[ ! -d /run/systemd/system ]]; then
     echo "[ollama] systemd not detected; start.sh will run ollama serve when needed"
     return
@@ -663,19 +666,18 @@ configure_ollama_service() {
   echo "[ollama] configuring systemd service"
   local ollama_bin
   ollama_bin="$(command -v ollama)"
-  local service_user="root"
-  local service_group="root"
-  if command -v useradd >/dev/null 2>&1; then
-    run_privileged useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama 2>/dev/null || true
-    if id ollama >/dev/null 2>&1; then
-      service_user="ollama"
-      service_group="ollama"
+  local service_user="${OLLAMA_SERVICE_USER:-root}"
+  local service_group="${OLLAMA_SERVICE_GROUP:-$service_user}"
+  if [[ "$service_user" != "root" ]]; then
+    if command -v useradd >/dev/null 2>&1; then
+      run_privileged useradd -r -s /bin/false -U -m -d /usr/share/ollama "$service_user" 2>/dev/null || true
       for group in render video; do
         if getent group "$group" >/dev/null 2>&1; then
-          run_privileged usermod -a -G "$group" ollama 2>/dev/null || true
+          run_privileged usermod -a -G "$group" "$service_user" 2>/dev/null || true
         fi
       done
     fi
+    run_privileged chown -R "$service_user:$service_group" "$OLLAMA_MODELS" 2>/dev/null || true
   fi
 
   local service_file
@@ -693,6 +695,7 @@ Restart=always
 RestartSec=3
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="OLLAMA_HOST=127.0.0.1:11434"
+Environment="OLLAMA_MODELS=$OLLAMA_MODELS"
 
 [Install]
 WantedBy=default.target
@@ -701,7 +704,8 @@ SERVICE
   run_privileged install -m 0644 "$service_file" /etc/systemd/system/ollama.service
   rm -f "$service_file"
   run_privileged systemctl daemon-reload || true
-  run_privileged systemctl enable --now ollama || echo "[ollama] systemd service created but failed to start; start.sh can still run ollama serve" >&2
+  run_privileged systemctl enable ollama >/dev/null 2>&1 || true
+  run_privileged systemctl restart ollama || echo "[ollama] systemd service created but failed to start; start.sh can still run ollama serve" >&2
 }
 
 install_ollama_from_official_script() {

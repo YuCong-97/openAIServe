@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import os
 import shutil
 import subprocess
@@ -15,10 +16,15 @@ from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
+os.environ.setdefault("OLLAMA_MODELS", str(ROOT_DIR / "deps" / "ollama-store"))
 
 from huggingface_hub import hf_hub_download, snapshot_download  # noqa: E402
 
 from openaiserve.config import load_config, resolve_path  # noqa: E402
+
+
+class OllamaCreateError(RuntimeError):
+    pass
 
 
 def selected_components(value: str) -> set[str]:
@@ -63,8 +69,10 @@ def ensure_ollama_server() -> subprocess.Popen[bytes] | None:
     log_file = log_path.open("ab")
     env = os.environ.copy()
     env.setdefault("OLLAMA_HOST", "127.0.0.1:11434")
+    env.setdefault("OLLAMA_MODELS", str(ollama_store_root()))
+    ollama_store_root().mkdir(parents=True, exist_ok=True)
 
-    print(f"[ollama] starting temporary server for model pulls; logs: {log_path}")
+    print(f"[ollama] starting temporary server for model pulls; store: {env['OLLAMA_MODELS']}; logs: {log_path}")
     process = subprocess.Popen(["ollama", "serve"], stdout=log_file, stderr=subprocess.STDOUT, env=env)
     atexit.register(log_file.close)
     atexit.register(terminate_process, process)
@@ -334,6 +342,10 @@ def ollama_model_root() -> Path:
     return resolve_path(os.getenv("OLLAMA_MODEL_DIR", "deps/ollama-models"), ROOT_DIR)
 
 
+def ollama_store_root() -> Path:
+    return resolve_path(os.getenv("OLLAMA_MODELS", "deps/ollama-store"), ROOT_DIR)
+
+
 def ollama_local_model_candidates(item: dict[str, Any], filename: str | None) -> list[Path]:
     candidates = []
     for key in ("local_path", "model_path", "gguf_path"):
@@ -396,10 +408,72 @@ def run_ollama_create(name: str, modelfile_text: str) -> None:
     subprocess.run(["ollama", "create", name, "-f", str(modelfile_path)], check=True)
 
 
+def bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.lower() in {"1", "true", "yes", "on"}
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    total = path.stat().st_size
+    read_bytes = 0
+    last_report = time.monotonic()
+    with path.open("rb") as fh:
+        while True:
+            chunk = fh.read(1024 * 1024 * 8)
+            if not chunk:
+                break
+            digest.update(chunk)
+            read_bytes += len(chunk)
+            now = time.monotonic()
+            if now - last_report >= 5:
+                print(f"[ollama] hashing {path.name}: {format_bytes(read_bytes)} / {format_bytes(total)}")
+                last_report = now
+    return digest.hexdigest()
+
+
+def preseed_ollama_blob(model_path: Path) -> Path | None:
+    if not bool_env("OLLAMA_PRESEED_BLOBS", True):
+        return None
+
+    source = model_path.resolve()
+    blob_dir = ollama_store_root() / "blobs"
+    blob_dir.mkdir(parents=True, exist_ok=True)
+
+    digest = sha256_file(source)
+    blob_path = blob_dir / f"sha256-{digest}"
+    if blob_path.exists():
+        if blob_path.stat().st_size == source.stat().st_size:
+            print(f"[ollama] blob already exists {blob_path}")
+            return blob_path
+        blob_path.unlink()
+
+    try:
+        os.link(source, blob_path)
+        print(f"[ollama] hardlinked GGUF into blob store {blob_path}")
+        return blob_path
+    except OSError as exc:
+        print(
+            f"[ollama] could not hardlink GGUF into {blob_dir}: {exc}. "
+            "Ollama may need enough free space to import another full copy."
+        )
+        return None
+
+
 def create_ollama_model(item: dict[str, Any], model_path: Path) -> None:
     name = ollama_model_name(item)
-    print(f"[ollama] creating {name} from {model_path}")
-    run_ollama_create(name, ollama_modelfile_text(model_path.resolve(), item))
+    preseed_ollama_blob(model_path)
+    print(f"[ollama] creating {name} from {model_path}; store: {ollama_store_root()}")
+    try:
+        run_ollama_create(name, ollama_modelfile_text(model_path.resolve(), item))
+    except subprocess.CalledProcessError as exc:
+        raise OllamaCreateError(
+            f"Failed to create Ollama model {name} from {model_path}. "
+            f"Ollama imports GGUF files into OLLAMA_MODELS={ollama_store_root()}; "
+            "make sure this path is on a disk with enough free space, then restart Ollama and rerun."
+        ) from exc
 
 
 def create_ollama_from_file(item: dict[str, Any]) -> bool:
@@ -439,8 +513,10 @@ def ensure_ollama_model(raw_item: str | dict[str, Any]) -> None:
     try:
         if create_ollama_from_file(item):
             return
+    except OllamaCreateError as exc:
+        raise SystemExit(str(exc)) from exc
     except SystemExit as exc:
-        print(f"[ollama] failed to create {name} from local/direct GGUF: {exc}")
+        print(f"[ollama] failed to prepare {name} from local/direct GGUF: {exc}")
     except Exception as exc:
         print(f"[ollama] failed to create {name} from local/direct GGUF: {exc}")
 

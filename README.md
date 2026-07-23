@@ -20,6 +20,8 @@ python scripts/prepare_offline_bundle.py --components all --profile rtx3090 --to
 
 ## 云端部署
 
+Ollama 模型仓库默认使用 `deps/ollama-store`，请把项目放在空间充足的磁盘。
+
 完整部署并启动：
 
 ```bash

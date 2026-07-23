@@ -6,6 +6,8 @@ COMPONENTS="all"
 HOST="0.0.0.0"
 PORT="8000"
 
+export OLLAMA_MODELS="${OLLAMA_MODELS:-$ROOT/deps/ollama-store}"
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --components)
@@ -45,12 +47,13 @@ cleanup() {
 trap cleanup EXIT
 
 if has_component "ollama"; then
+  mkdir -p "$OLLAMA_MODELS"
   if url_ok "http://127.0.0.1:11434/api/tags"; then
-    echo "[ollama] already running"
+    echo "[ollama] already running; expected model store: $OLLAMA_MODELS"
   elif ! command -v ollama >/dev/null 2>&1; then
     echo "[ollama] command not found; skipping Ollama. Run scripts/install.sh --components ollama first if text generation is needed." >&2
   else
-    echo "[ollama] starting"
+    echo "[ollama] starting with model store: $OLLAMA_MODELS"
     ollama serve &
     pids+=("$!")
   fi
