@@ -7,7 +7,7 @@
 - 视频生成：ComfyUI，内置 RTX 3090 友好的 Wan2.1 T2V 1.3B 工作流
 - 角色锁定：图片与视频都支持多角色 LoRA
 - 音频生成：预留 CosyVoice 3 provider 与 `/v1/audio/speech`
-- Linux 优先部署，Ollama 和 ComfyUI 安装可并行；Windows 脚本暂作基础支持
+- Linux 一键部署，Ollama 和 ComfyUI 安装可并行
 
 ## 快速开始
 
@@ -15,12 +15,6 @@ Linux：
 
 ```bash
 bash scripts/install.sh --components all --profile rtx3090 --download-models --start
-```
-
-Windows PowerShell 暂作基础支持：
-
-```powershell
-.\scripts\install.ps1 -Components all -Profile rtx3090 -DownloadModels -Start
 ```
 
 Linux 脚本会先检查 `python3`、`python3-venv`、`git`、`curl`；在 apt/dnf/yum/pacman/zypper/apk 系统上会尝试自动安装缺失项。最小化系统如果没有这些包管理器，请先手动安装 Python 3、venv、Git 和 Curl。
@@ -82,8 +76,6 @@ bash scripts/install.sh --components comfyui --profile rtx3090 --download-models
 ```bash
 bash scripts/start.sh --components all
 ```
-
-Windows PowerShell 脚本暂作基础支持，可使用 `.\scripts\install.ps1` 和 `.\scripts\start.ps1`。
 
 默认服务地址：`http://127.0.0.1:8000`。
 

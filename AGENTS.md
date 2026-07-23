@@ -18,7 +18,7 @@ This file is the deployment and operations entry point for AI coding agents work
 - Do not commit generated folders such as `.venv/`, `deps/`, `outputs/`, `logs/`, or model files.
 - `config.yaml` is intentionally committed because this project ships an RTX 3090 default deployment profile.
 - LoRA files are not downloaded by default. Users must place them in `deps/ComfyUI/models/loras`.
-- Linux deployment is the primary target. Windows PowerShell scripts are currently best-effort/basic support.
+- Linux deployment is the only supported deployment target. Use Bash scripts.
 
 ## Repository Layout
 
@@ -29,9 +29,7 @@ This file is the deployment and operations entry point for AI coding agents work
 - `openaiserve/workflows.py`: ComfyUI workflow builders
 - `config.yaml`: active RTX 3090 deployment config
 - `config.example.yaml`: example config copied by installers when `config.yaml` is absent
-- `scripts/install.ps1`: Windows deployment script
 - `scripts/install.sh`: Linux deployment script
-- `scripts/start.ps1`: Windows startup script
 - `scripts/start.sh`: Linux startup script
 - `scripts/download_models.py`: model downloader for Ollama and ComfyUI assets, including direct mirror URLs
 - `workflows/`: optional custom ComfyUI API workflow templates
@@ -56,12 +54,6 @@ ComfyUI model destinations:
 
 ## Deployment Commands
 
-Windows best-effort deployment:
-
-```powershell
-.\scripts\install.ps1 -Components all -Profile rtx3090 -DownloadModels -Start
-```
-
 Linux full deployment:
 
 ```bash
@@ -74,31 +66,23 @@ Large downloads use curl resume mode and do not set a total transfer timeout by 
 
 ComfyUI repository install tries official GitHub, GitCode, and Gitee mirrors by default. Override with `COMFYUI_GIT_URL` or a space-separated `COMFYUI_GIT_URLS`. ComfyUI model downloads first try per-model `source_urls` from `config.yaml`; the RTX 3090 defaults include ModelScope URLs. Then they try `MODEL_DIRECT_URL_TEMPLATES`, then `https://huggingface.co` and `https://hf-mirror.com`. Override with `MODEL_DIRECT_URL_TEMPLATES`, `HF_ENDPOINT`, or space-separated `HF_ENDPOINTS`.
 
-Windows best-effort text-only deployment:
+Linux text-only deployment:
 
-```powershell
-.\scripts\install.ps1 -Components ollama -Profile rtx3090 -DownloadModels
+```bash
+bash scripts/install.sh --components ollama --profile rtx3090 --download-models
 ```
 
-Windows best-effort image/video-only deployment:
+Linux image/video-only deployment:
 
-```powershell
-.\scripts\install.ps1 -Components comfyui -Profile rtx3090 -DownloadModels
+```bash
+bash scripts/install.sh --components comfyui --profile rtx3090 --download-models
 ```
 
-Manual startup on Windows:
-
-```powershell
-.\scripts\start.ps1 -Components all
-```
-
-Manual startup on Linux:
+Manual startup:
 
 ```bash
 bash scripts/start.sh --components all
 ```
-
-Do not use `.\scripts\start.ps1` on Linux. That is a Windows PowerShell command; Linux shells must run `bash scripts/start.sh --components ...`.
 
 ## Model Download Notes
 
@@ -163,7 +147,7 @@ Multi-character request:
 
 Run static Python verification:
 
-```powershell
+```bash
 python -m compileall openaiserve scripts
 python -c "import openaiserve.app as app; print(app.app.title)"
 ```
