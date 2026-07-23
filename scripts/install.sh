@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
       DOWNLOAD_MODELS="true"
       shift
       ;;
-    --include-optional-models)
+    --include-optional-models|--include-optional)
       INCLUDE_OPTIONAL="true"
       shift
       ;;
@@ -144,8 +144,10 @@ install_linux_prereqs() {
 download_with_retries() {
   local url="$1"
   local output="$2"
+  local connect_timeout="${DOWNLOAD_CONNECT_TIMEOUT:-20}"
+  local max_time="${DOWNLOAD_MAX_TIME:-0}"
   for attempt in 1 2 3; do
-    if curl -fL --connect-timeout 20 --max-time 120 "$url" -o "$output"; then
+    if curl -fL --retry 3 --retry-delay 5 --connect-timeout "$connect_timeout" --max-time "$max_time" -C - "$url" -o "$output"; then
       return
     fi
     echo "[download] failed attempt $attempt/3 for $url" >&2
@@ -474,6 +476,56 @@ install_ollama_from_archive() {
   return 1
 }
 
+configure_ollama_service() {
+  if ! command -v systemctl >/dev/null 2>&1 || [[ ! -d /run/systemd/system ]]; then
+    echo "[ollama] systemd not detected; start.sh will run ollama serve when needed"
+    return
+  fi
+
+  echo "[ollama] configuring systemd service"
+  local ollama_bin
+  ollama_bin="$(command -v ollama)"
+  local service_user="root"
+  local service_group="root"
+  if command -v useradd >/dev/null 2>&1; then
+    run_privileged useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama 2>/dev/null || true
+    if id ollama >/dev/null 2>&1; then
+      service_user="ollama"
+      service_group="ollama"
+      for group in render video; do
+        if getent group "$group" >/dev/null 2>&1; then
+          run_privileged usermod -a -G "$group" ollama 2>/dev/null || true
+        fi
+      done
+    fi
+  fi
+
+  local service_file
+  service_file="$(mktemp)"
+  cat >"$service_file" <<SERVICE
+[Unit]
+Description=Ollama Service
+After=network-online.target
+
+[Service]
+ExecStart=$ollama_bin serve
+User=$service_user
+Group=$service_group
+Restart=always
+RestartSec=3
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="OLLAMA_HOST=127.0.0.1:11434"
+
+[Install]
+WantedBy=default.target
+SERVICE
+
+  run_privileged install -m 0644 "$service_file" /etc/systemd/system/ollama.service
+  rm -f "$service_file"
+  run_privileged systemctl daemon-reload || true
+  run_privileged systemctl enable --now ollama || echo "[ollama] systemd service created but failed to start; start.sh can still run ollama serve" >&2
+}
+
 install_ollama_from_official_script() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
@@ -521,14 +573,38 @@ install_ollama() {
   echo "[ollama] checking Ollama"
   if command -v ollama >/dev/null 2>&1; then
     echo "[ollama] already installed"
+    ollama --version || true
+    configure_ollama_service
     return
   fi
-  echo "[ollama] installing from script mirrors"
-  if install_ollama_from_official_script && command -v ollama >/dev/null 2>&1; then
-    return
+
+  local method="${OLLAMA_INSTALL_METHOD:-auto}"
+  case "$method" in
+    archive)
+      echo "[ollama] installing from archive mirrors"
+      install_ollama_from_archive
+      ;;
+    script)
+      echo "[ollama] installing from script mirrors"
+      install_ollama_from_official_script || install_ollama_from_archive
+      ;;
+    auto)
+      echo "[ollama] installing from archive mirrors, then script mirrors if needed"
+      install_ollama_from_archive || install_ollama_from_official_script
+      ;;
+    *)
+      echo "Unknown OLLAMA_INSTALL_METHOD: $method. Use archive, script, or auto." >&2
+      return 1
+      ;;
+  esac
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "Ollama installation completed without an ollama command on PATH." >&2
+    return 1
   fi
-  echo "[ollama] install scripts failed; falling back to archive mirrors" >&2
-  install_ollama_from_archive
+
+  ollama --version || true
+  configure_ollama_service
 }
 
 install_comfyui() {

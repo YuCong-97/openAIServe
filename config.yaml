@@ -129,26 +129,38 @@ model_profiles:
       - id: flux-schnell-fp8
         repo_id: Comfy-Org/flux1-schnell
         filename: flux1-schnell-fp8.safetensors
+        source_urls:
+          - https://modelscope.cn/models/Comfy-Org/flux1-schnell/resolve/master/flux1-schnell-fp8.safetensors
         target: checkpoints
       - id: sdxl-base-1.0
         repo_id: stabilityai/stable-diffusion-xl-base-1.0
         filename: sd_xl_base_1.0.safetensors
+        source_urls:
+          - https://modelscope.cn/models/stabilityai/stable-diffusion-xl-base-1.0/resolve/master/sd_xl_base_1.0.safetensors
         target: checkpoints
       - id: wan2.1-t2v-1.3b
         repo_id: Comfy-Org/Wan_2.1_ComfyUI_repackaged
         repo_filename: split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors
+        source_urls:
+          - https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors
         target: diffusion_models
       - id: wan2.1-umt5-fp8
         repo_id: Comfy-Org/Wan_2.1_ComfyUI_repackaged
         repo_filename: split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
+        source_urls:
+          - https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
         target: text_encoders
       - id: wan2.1-vae
         repo_id: Comfy-Org/Wan_2.1_ComfyUI_repackaged
         repo_filename: split_files/vae/wan_2.1_vae.safetensors
+        source_urls:
+          - https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors
         target: vae
       - id: flux-dev-fp8
         repo_id: Comfy-Org/flux1-dev
         filename: flux1-dev-fp8.safetensors
+        source_urls:
+          - https://modelscope.cn/models/Comfy-Org/flux1-dev/resolve/master/flux1-dev-fp8.safetensors
         target: checkpoints
         optional: true
     cosyvoice_models: []
@@ -160,6 +172,7 @@ model_profiles:
       - id: flux-schnell-fp8
         repo_id: Comfy-Org/flux1-schnell
         filename: flux1-schnell-fp8.safetensors
+        source_urls:
+          - https://modelscope.cn/models/Comfy-Org/flux1-schnell/resolve/master/flux1-schnell-fp8.safetensors
         target: checkpoints
     cosyvoice_models: []
-

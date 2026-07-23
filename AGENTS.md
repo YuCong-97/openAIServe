@@ -18,7 +18,7 @@ This file is the deployment and operations entry point for AI coding agents work
 - Do not commit generated folders such as `.venv/`, `deps/`, `outputs/`, `logs/`, or model files.
 - `config.yaml` is intentionally committed because this project ships an RTX 3090 default deployment profile.
 - LoRA files are not downloaded by default. Users must place them in `deps/ComfyUI/models/loras`.
-- On Windows, use PowerShell scripts. On Linux, use Bash scripts.
+- Linux deployment is the primary target. Windows PowerShell scripts are currently best-effort/basic support.
 
 ## Repository Layout
 
@@ -33,7 +33,7 @@ This file is the deployment and operations entry point for AI coding agents work
 - `scripts/install.sh`: Linux deployment script
 - `scripts/start.ps1`: Windows startup script
 - `scripts/start.sh`: Linux startup script
-- `scripts/download_models.py`: model downloader for Ollama and Hugging Face assets
+- `scripts/download_models.py`: model downloader for Ollama and ComfyUI assets, including direct mirror URLs
 - `workflows/`: optional custom ComfyUI API workflow templates
 
 ## Default RTX 3090 Profile
@@ -56,7 +56,7 @@ ComfyUI model destinations:
 
 ## Deployment Commands
 
-Windows full deployment:
+Windows best-effort deployment:
 
 ```powershell
 .\scripts\install.ps1 -Components all -Profile rtx3090 -DownloadModels -Start
@@ -68,17 +68,19 @@ Linux full deployment:
 bash scripts/install.sh --components all --profile rtx3090 --download-models --start
 ```
 
-The Linux installer checks for `python3`, venv support, `git`, `curl`, CA certificates, and `zstd` before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. On apt systems it retries `apt-get update` and `apt-get install --fix-missing` because some mirrors temporarily serve mismatched indexes during sync. If `ollama.com` is unreachable, it tries the China mirror `https://ollama.ac.cn/install.sh`, then `https://ollama.ac.cn/download/ollama-linux-*.tar.zst`, then the GitHub release archive. If all defaults are unreachable, set `OLLAMA_INSTALL_SCRIPT_URLS`, `OLLAMA_ARCHIVE_URLS`, or `OLLAMA_INSTALL_URL` to reachable mirrors. If the host uses another package manager, install Python 3, venv support, Git, Curl, CA certificates, and zstd manually before rerunning.
+The Linux installer checks for `python3`, venv support, `git`, `curl`, CA certificates, and `zstd` before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. On apt systems it retries `apt-get update` and `apt-get install --fix-missing` because some mirrors temporarily serve mismatched indexes during sync. Ollama defaults to `OLLAMA_INSTALL_METHOD=auto`: archive install from `https://ollama.ac.cn/download/ollama-linux-*.tar.zst`, then GitHub release archives, then install script mirrors. Set `OLLAMA_INSTALL_METHOD=archive` to skip scripts or `OLLAMA_INSTALL_METHOD=script` to prefer install scripts. If all defaults are unreachable, set `OLLAMA_INSTALL_SCRIPT_URLS`, `OLLAMA_ARCHIVE_URLS`, or `OLLAMA_INSTALL_URL` to reachable mirrors. If the host uses another package manager, install Python 3, venv support, Git, Curl, CA certificates, and zstd manually before rerunning.
 
-ComfyUI repository install tries official GitHub, GitCode, and Gitee mirrors by default. Override with `COMFYUI_GIT_URL` or a space-separated `COMFYUI_GIT_URLS`. ComfyUI model downloads try `https://huggingface.co` and `https://hf-mirror.com` by default. Override with `HF_ENDPOINT` or space-separated `HF_ENDPOINTS`.
+Large downloads use curl resume mode and do not set a total transfer timeout by default. Override installer downloads with `DOWNLOAD_MAX_TIME`; override model direct downloads with `MODEL_DOWNLOAD_MAX_TIME`.
 
-Windows text-only deployment:
+ComfyUI repository install tries official GitHub, GitCode, and Gitee mirrors by default. Override with `COMFYUI_GIT_URL` or a space-separated `COMFYUI_GIT_URLS`. ComfyUI model downloads first try per-model `source_urls` from `config.yaml`; the RTX 3090 defaults include ModelScope URLs. Then they try `MODEL_DIRECT_URL_TEMPLATES`, then `https://huggingface.co` and `https://hf-mirror.com`. Override with `MODEL_DIRECT_URL_TEMPLATES`, `HF_ENDPOINT`, or space-separated `HF_ENDPOINTS`.
+
+Windows best-effort text-only deployment:
 
 ```powershell
 .\scripts\install.ps1 -Components ollama -Profile rtx3090 -DownloadModels
 ```
 
-Windows image/video-only deployment:
+Windows best-effort image/video-only deployment:
 
 ```powershell
 .\scripts\install.ps1 -Components comfyui -Profile rtx3090 -DownloadModels
@@ -113,8 +115,8 @@ Optional model:
 
 Download optional models only when explicitly requested:
 
-```powershell
-.\scripts\install.ps1 -Components all -Profile rtx3090 -DownloadModels -IncludeOptionalModels
+```bash
+bash scripts/install.sh --components all --profile rtx3090 --download-models --include-optional-models
 ```
 
 ## Character LoRA Deployment
@@ -204,10 +206,12 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 - If Linux deployment fails with `python: command not found`, pull the latest repository version and rerun `bash scripts/install.sh ...`; older installers did not auto-install Python.
 - If apt fails with `File has unexpected size` or `Mirror sync in progress`, pull the latest repository version and rerun. The installer retries apt with `--fix-missing`; if the mirror keeps failing, wait a few minutes or switch `/etc/apt/sources.list` to another Ubuntu mirror.
 - If Ollama install fails with `Failed to connect to ollama.com port 443`, pull the latest repository version and rerun. The installer tries `ollama.ac.cn` before GitHub releases; for restricted networks, set `OLLAMA_ARCHIVE_URLS=https://your-mirror/ollama-linux-amd64.tar.zst`.
+- If Ollama archive downloads start but fail on slow links, rerun after pull. Installer downloads no longer use a 120 second total timeout and will resume partial files with curl.
+- Ollama archive install does not require the upstream install script. The model downloader starts a temporary `ollama serve` before `ollama pull` if no Ollama API is running.
 - If Torch install fails because `download.pytorch.org` is unreachable, rerun with `TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128` or set `TORCH_INSTALL_CMD` to a fully custom command using `$COMFYUI_PYTHON`.
 - If ComfyUI startup fails with `NVIDIA driver on your system is too old` and logs `found version 12040`, the driver supports CUDA 12.4 but the installed Torch wheel is newer. Rerun with `TORCH_CUDA_VARIANT=cu124` and optionally `TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu124`.
 - If ComfyUI clone fails because `github.com` is unreachable, rerun after pull. The installer tries GitCode and Gitee mirrors; for restricted networks, set `COMFYUI_GIT_URLS=https://gitcode.com/gh_mirrors/co/ComfyUI.git`.
-- If ComfyUI model download fails because Hugging Face is unreachable, rerun with `HF_ENDPOINTS="https://hf-mirror.com https://huggingface.co"`.
+- If ComfyUI model download fails because Hugging Face is unreachable, rely on the committed ModelScope `source_urls` first. For private mirrors, add `source_urls` to the affected model entry or rerun with `MODEL_DIRECT_URL_TEMPLATES="https://your-mirror/{repo_id}/resolve/master/{filename}"`.
 - If image/video generation fails, verify ComfyUI is running at `http://127.0.0.1:8188`.
 - If ComfyUI reports missing nodes, update ComfyUI and confirm the installed version includes Wan video nodes.
 - If ComfyUI reports missing models, compare `config.yaml` model file names with files under `deps/ComfyUI/models`.
