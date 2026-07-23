@@ -18,8 +18,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "output_dir": "outputs",
     },
     "auth": {
-        "api_key": "",
-        "allow_no_key": True,
+        "api_key": "change-me-openaiserve-key",
+        "allow_no_key": False,
     },
     "providers": {
         "ollama": {

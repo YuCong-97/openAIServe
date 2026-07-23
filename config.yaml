@@ -5,8 +5,8 @@ server:
   output_dir: outputs
 
 auth:
-  api_key: ""
-  allow_no_key: true
+  api_key: change-me-openaiserve-key
+  allow_no_key: false
 
 providers:
   ollama:

@@ -56,8 +56,15 @@ bash scripts/start.sh --components all
 
 公网访问时启动到 `0.0.0.0`，只需要放行 API 端口 `8000`：
 
+先在 `config.yaml` 中设置：
+
+```yaml
+auth:
+  api_key: your-key
+  allow_no_key: false
+```
+
 ```bash
-export OPENAISERVE_API_KEY="your-key"
 bash scripts/start.sh --components all --host 0.0.0.0 --port 8000
 ```
 
@@ -91,7 +98,6 @@ curl http://服务器公网IP:8000/v1/chat/completions \
 
 ```bash
 mkdir -p logs
-export OPENAISERVE_API_KEY="your-key"
 nohup bash scripts/start.sh --components all --host 0.0.0.0 --port 8000 > logs/openaiserve.log 2>&1 &
 ```
 
@@ -125,6 +131,7 @@ characters:
 
 ```bash
 curl http://127.0.0.1:8000/v1/chat/completions \
+  -H "Authorization: Bearer your-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen3:30b","messages":[{"role":"user","content":"写一个三行部署说明"}]}'
 ```
@@ -133,6 +140,7 @@ curl http://127.0.0.1:8000/v1/chat/completions \
 
 ```bash
 curl http://127.0.0.1:8000/v1/images/generations \
+  -H "Authorization: Bearer your-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"comfyui-flux","character":"protagonist","prompt":"cinematic portrait, soft rim light","size":"1024x1024","response_format":"url"}'
 ```
@@ -141,16 +149,19 @@ curl http://127.0.0.1:8000/v1/images/generations \
 
 ```bash
 curl http://127.0.0.1:8000/v1/videos/generations \
+  -H "Authorization: Bearer your-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"comfyui-video","characters":["protagonist","supporting_a"],"prompt":"two characters walk through a rainy neon street","frames":33,"response_format":"url"}'
 ```
 
 ## 鉴权配置
 
-本地默认允许无 key。公网使用时建议设置 `OPENAISERVE_API_KEY`，并在启动服务前导出：
+默认从 `config.yaml` 读取 API key：
 
-```bash
-export OPENAISERVE_API_KEY="your-key"
+```yaml
+auth:
+  api_key: your-key
+  allow_no_key: false
 ```
 
 外部请求时带上：
@@ -159,10 +170,4 @@ export OPENAISERVE_API_KEY="your-key"
 -H "Authorization: Bearer your-key"
 ```
 
-或在 `config.yaml` 中配置：
-
-```yaml
-auth:
-  api_key: your-key
-  allow_no_key: false
-```
+也可以用环境变量 `OPENAISERVE_API_KEY` 临时覆盖配置文件中的 key。

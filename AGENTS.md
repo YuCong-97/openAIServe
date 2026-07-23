@@ -17,6 +17,7 @@ AI agents should treat this repository as a Linux-only one-command OpenAI-compat
 - `config.yaml` is committed intentionally as the RTX 3090 default profile.
 - Put LoRA files in `deps/ComfyUI/models/loras`.
 - Deployment defaults and China mirror parameters are embedded in scripts and `config.yaml`; do not add long environment-variable instructions to docs.
+- API auth is configured in `config.yaml` under `auth.api_key`; replace the committed placeholder before public deployment.
 
 ## Files
 
