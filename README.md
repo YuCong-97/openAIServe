@@ -69,6 +69,14 @@ export HF_ENDPOINTS="https://hf-mirror.com https://huggingface.co"
 .\scripts\start.ps1 -Components all
 ```
 
+Linux 手动启动：
+
+```bash
+bash scripts/start.sh --components all
+```
+
+注意：`.\scripts\start.ps1` 是 Windows PowerShell 命令，Linux shell 里请使用 `bash scripts/start.sh`。
+
 默认服务地址：`http://127.0.0.1:8000`。
 
 ## RTX 3090 默认工作流

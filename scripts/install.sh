@@ -425,24 +425,28 @@ install_linux_prereqs
 install_server
 
 pids=()
+pid_names=()
 if has_component "ollama"; then
   install_ollama &
   pids+=("$!")
+  pid_names+=("ollama")
 fi
 if has_component "comfyui"; then
   install_comfyui &
   pids+=("$!")
+  pid_names+=("comfyui")
 fi
 
 failed_jobs=()
-for pid in "${pids[@]}"; do
+for index in "${!pids[@]}"; do
+  pid="${pids[$index]}"
   if ! wait "$pid"; then
-    failed_jobs+=("$pid")
+    failed_jobs+=("${pid_names[$index]}")
   fi
 done
 
 if [[ "${#failed_jobs[@]}" -gt 0 ]]; then
-  echo "One or more component installers failed. Review the log above and rerun after fixing network or package manager access." >&2
+  echo "Component installer(s) failed: ${failed_jobs[*]}. Review the log above and rerun after fixing network or package manager access." >&2
   exit 1
 fi
 

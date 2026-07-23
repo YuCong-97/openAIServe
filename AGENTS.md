@@ -96,6 +96,8 @@ Manual startup on Linux:
 bash scripts/start.sh --components all
 ```
 
+Do not use `.\scripts\start.ps1` on Linux. That is a Windows PowerShell command; Linux shells must run `bash scripts/start.sh --components ...`.
+
 ## Model Download Notes
 
 The `rtx3090` profile downloads:
@@ -198,6 +200,7 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 ## Common Troubleshooting
 
 - If `/v1/chat/completions` fails, verify Ollama is running at `http://127.0.0.1:11434`.
+- If `curl http://127.0.0.1:8000/...` returns connection refused, the API server is not running. On Linux start it with `bash scripts/start.sh --components all` or `bash scripts/start.sh --components comfyui`.
 - If Linux deployment fails with `python: command not found`, pull the latest repository version and rerun `bash scripts/install.sh ...`; older installers did not auto-install Python.
 - If apt fails with `File has unexpected size` or `Mirror sync in progress`, pull the latest repository version and rerun. The installer retries apt with `--fix-missing`; if the mirror keeps failing, wait a few minutes or switch `/etc/apt/sources.list` to another Ubuntu mirror.
 - If Ollama install fails with `Failed to connect to ollama.com port 443`, pull the latest repository version and rerun. The installer tries `ollama.ac.cn` before GitHub releases; for restricted networks, set `OLLAMA_ARCHIVE_URLS=https://your-mirror/ollama-linux-amd64.tar.zst`.
