@@ -251,42 +251,67 @@ ollama_archive_name() {
 install_ollama_from_archive() {
   local archive_name
   archive_name="$(ollama_archive_name)"
-  local url="${OLLAMA_INSTALL_URL:-https://github.com/ollama/ollama/releases/latest/download/$archive_name}"
+  local urls=()
+  if [[ -n "${OLLAMA_INSTALL_URL:-}" ]]; then
+    urls+=("$OLLAMA_INSTALL_URL")
+  elif [[ -n "${OLLAMA_ARCHIVE_URLS:-}" ]]; then
+    read -r -a urls <<<"$OLLAMA_ARCHIVE_URLS"
+  else
+    urls+=(
+      "https://ollama.ac.cn/download/$archive_name"
+      "https://github.com/ollama/ollama/releases/latest/download/$archive_name"
+    )
+  fi
   local tmp_dir
   tmp_dir="$(mktemp -d)"
   local archive="$tmp_dir/$archive_name"
 
-  echo "[ollama] downloading archive from $url"
-  if ! download_with_retries "$url" "$archive"; then
-    rm -rf "$tmp_dir"
-    echo "Ollama archive download failed. Set OLLAMA_INSTALL_URL to a reachable mirror URL and rerun." >&2
-    return 1
-  fi
+  for url in "${urls[@]}"; do
+    echo "[ollama] downloading archive from $url"
+    if ! download_with_retries "$url" "$archive"; then
+      continue
+    fi
 
-  echo "[ollama] extracting archive to /usr"
-  extract_zstd_archive_to_usr "$archive"
+    echo "[ollama] extracting archive to /usr"
+    if extract_zstd_archive_to_usr "$archive" && command -v ollama >/dev/null 2>&1; then
+      rm -rf "$tmp_dir"
+      return
+    fi
+  done
+
   rm -rf "$tmp_dir"
-
-  if ! command -v ollama >/dev/null 2>&1; then
-    echo "Ollama archive extracted, but ollama is still not on PATH." >&2
-    return 1
-  fi
+  echo "Ollama archive download/install failed. Set OLLAMA_INSTALL_URL or OLLAMA_ARCHIVE_URLS to reachable mirror URL(s) and rerun." >&2
+  return 1
 }
 
 install_ollama_from_official_script() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
   local installer="$tmp_dir/install.sh"
-
-  if ! download_with_retries "https://ollama.com/install.sh" "$installer"; then
-    rm -rf "$tmp_dir"
-    return 1
+  local urls=()
+  if [[ -n "${OLLAMA_INSTALL_SCRIPT_URL:-}" ]]; then
+    urls+=("$OLLAMA_INSTALL_SCRIPT_URL")
+  elif [[ -n "${OLLAMA_INSTALL_SCRIPT_URLS:-}" ]]; then
+    read -r -a urls <<<"$OLLAMA_INSTALL_SCRIPT_URLS"
+  else
+    urls+=(
+      "https://ollama.com/install.sh"
+      "https://ollama.ac.cn/install.sh"
+    )
   fi
 
-  sh "$installer"
-  local status=$?
+  for url in "${urls[@]}"; do
+    echo "[ollama] downloading install script from $url"
+    if ! download_with_retries "$url" "$installer"; then
+      continue
+    fi
+    if sh "$installer" && command -v ollama >/dev/null 2>&1; then
+      rm -rf "$tmp_dir"
+      return
+    fi
+  done
   rm -rf "$tmp_dir"
-  return "$status"
+  return 1
 }
 
 install_server() {
@@ -308,11 +333,11 @@ install_ollama() {
     echo "[ollama] already installed"
     return
   fi
-  echo "[ollama] installing from ollama.com"
+  echo "[ollama] installing from script mirrors"
   if install_ollama_from_official_script && command -v ollama >/dev/null 2>&1; then
     return
   fi
-  echo "[ollama] ollama.com install failed; falling back to GitHub release archive" >&2
+  echo "[ollama] install scripts failed; falling back to archive mirrors" >&2
   install_ollama_from_archive
 }
 
