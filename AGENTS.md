@@ -15,7 +15,7 @@ This file is the deployment and operations entry point for AI coding agents work
 ## Important Agent Rules
 
 - Do not download models, install GPU dependencies, or start long-running services unless the user asks for deployment or verification that requires it.
-- Do not commit generated folders such as `.venv/`, `deps/`, `outputs/`, `logs/`, or model files.
+- Do not commit generated folders such as `.venv/`, `deps/`, `downloads/`, `packages/`, `outputs/`, `logs/`, or model files.
 - `config.yaml` is intentionally committed because this project ships an RTX 3090 default deployment profile.
 - LoRA files are not downloaded by default. Users must place them in `deps/ComfyUI/models/loras`.
 - Linux deployment is the only supported deployment target. Use Bash scripts.
@@ -60,7 +60,7 @@ Linux full deployment:
 bash scripts/install.sh --components all --profile rtx3090 --download-models --start
 ```
 
-The Linux installer checks for `python3`, venv support, `git`, `curl`, CA certificates, and `zstd` before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. On apt systems it retries `apt-get update` and `apt-get install --fix-missing` because some mirrors temporarily serve mismatched indexes during sync. Ollama defaults to `OLLAMA_INSTALL_METHOD=auto`: archive install from `https://ollama.ac.cn/download/ollama-linux-*.tar.zst`, then GitHub release archives, then install script mirrors. Set `OLLAMA_INSTALL_METHOD=archive` to skip scripts or `OLLAMA_INSTALL_METHOD=script` to prefer install scripts. If all defaults are unreachable, set `OLLAMA_INSTALL_SCRIPT_URLS`, `OLLAMA_ARCHIVE_URLS`, or `OLLAMA_INSTALL_URL` to reachable mirrors. If the host uses another package manager, install Python 3, venv support, Git, Curl, CA certificates, and zstd manually before rerunning.
+The Linux installer checks for `python3`, venv support, `git`, `curl`, CA certificates, and `zstd` before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. On apt systems it retries `apt-get update` and `apt-get install --fix-missing` because some mirrors temporarily serve mismatched indexes during sync. Ollama defaults to `OLLAMA_INSTALL_METHOD=auto`: local archive first, then ModelScope archive install from `https://modelscope.cn/models/modelscope/ollama-linux/resolve/master/ollama-linux-amd64.tar.zst`, then `ollama.ac.cn`, GitHub release archives, and install script mirrors. Set `OLLAMA_INSTALL_METHOD=local` to require a local archive, `OLLAMA_INSTALL_METHOD=archive` to skip scripts, `OLLAMA_INSTALL_METHOD=script` to prefer install scripts, or `OLLAMA_INSTALL_METHOD=skip` to skip Ollama installation. If all defaults are unreachable, set `OLLAMA_ARCHIVE_FILE`, `OLLAMA_INSTALL_SCRIPT_URLS`, `OLLAMA_ARCHIVE_URLS`, or `OLLAMA_INSTALL_URL` to reachable mirrors. If the host uses another package manager, install Python 3, venv support, Git, Curl, CA certificates, and zstd manually before rerunning.
 
 Large downloads use curl resume mode and do not set a total transfer timeout by default. Override installer downloads with `DOWNLOAD_MAX_TIME`; override model direct downloads with `MODEL_DOWNLOAD_MAX_TIME`.
 
@@ -189,7 +189,8 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 - If `curl http://127.0.0.1:8000/...` returns connection refused, the API server is not running. On Linux start it with `bash scripts/start.sh --components all` or `bash scripts/start.sh --components comfyui`.
 - If Linux deployment fails with `python: command not found`, pull the latest repository version and rerun `bash scripts/install.sh ...`; older installers did not auto-install Python.
 - If apt fails with `File has unexpected size` or `Mirror sync in progress`, pull the latest repository version and rerun. The installer retries apt with `--fix-missing`; if the mirror keeps failing, wait a few minutes or switch `/etc/apt/sources.list` to another Ubuntu mirror.
-- If Ollama install fails with `Failed to connect to ollama.com port 443`, pull the latest repository version and rerun. The installer tries `ollama.ac.cn` before GitHub releases; for restricted networks, set `OLLAMA_ARCHIVE_URLS=https://your-mirror/ollama-linux-amd64.tar.zst`.
+- If Ollama install fails with `Failed to connect to ollama.com port 443`, pull the latest repository version and rerun. The installer tries ModelScope before `ollama.ac.cn` and GitHub releases; for restricted networks, set `OLLAMA_ARCHIVE_URLS=https://your-mirror/ollama-linux-amd64.tar.zst`.
+- If the host cannot reach any external Ollama source, place `ollama-linux-amd64.tar.zst` under `packages/` or set `OLLAMA_ARCHIVE_FILE=/absolute/path/ollama-linux-amd64.tar.zst`, then rerun with `OLLAMA_INSTALL_METHOD=local`.
 - If Ollama archive downloads start but fail on slow links, rerun after pull. Installer downloads no longer use a 120 second total timeout and will resume partial files with curl.
 - Ollama archive install does not require the upstream install script. The model downloader starts a temporary `ollama serve` before `ollama pull` if no Ollama API is running.
 - If Torch install fails because `download.pytorch.org` is unreachable, rerun with `TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128` or set `TORCH_INSTALL_CMD` to a fully custom command using `$COMFYUI_PYTHON`.

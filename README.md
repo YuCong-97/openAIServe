@@ -19,15 +19,30 @@ bash scripts/install.sh --components all --profile rtx3090 --download-models --s
 
 Linux 脚本会先检查 `python3`、`python3-venv`、`git`、`curl`；在 apt/dnf/yum/pacman/zypper/apk 系统上会尝试自动安装缺失项。最小化系统如果没有这些包管理器，请先手动安装 Python 3、venv、Git 和 Curl。
 如果 apt 提示 `File has unexpected size` 或 `Mirror sync in progress`，通常是当前镜像站同步中。最新版脚本会自动清理 apt 缓存并重试；如果仍失败，稍后重跑或切换 `/etc/apt/sources.list` 到其他 Ubuntu 镜像。
-如果访问 `ollama.com` 失败，脚本会自动尝试国内镜像 `https://ollama.ac.cn/install.sh`，再回退到 `https://ollama.ac.cn/download/ollama-linux-*.tar.zst` 和 GitHub release。若这些地址都不可达，可以设置自己的镜像：
+Ollama 安装默认使用 `auto` 模式：先查找本地离线包，再尝试 ModelScope 国内归档包，然后回退到 `ollama.ac.cn`、GitHub release 和安装脚本。若默认地址都不可达，可以设置自己的镜像：
 
 ```bash
 export OLLAMA_INSTALL_METHOD=auto
-export OLLAMA_INSTALL_SCRIPT_URLS="https://ollama.ac.cn/install.sh"
-export OLLAMA_ARCHIVE_URLS="https://ollama.ac.cn/download/ollama-linux-amd64.tar.zst"
+export OLLAMA_ARCHIVE_URLS="https://modelscope.cn/models/modelscope/ollama-linux/resolve/master/ollama-linux-amd64.tar.zst"
 ```
 
-Linux 默认使用 `auto` 模式：优先归档包，失败后再尝试安装脚本，避免安装脚本内部再访问不可达的外网地址。使用归档包安装后，模型下载器会在 `ollama pull` 前临时启动本地 `ollama serve`；如果系统支持 systemd，脚本也会尝试创建并启动 `ollama.service`。
+如果服务器无法访问任何外部 Ollama 源，可以在其他机器下载 `ollama-linux-amd64.tar.zst` 后传到项目目录：
+
+```bash
+mkdir -p packages
+# 上传或拷贝 ollama-linux-amd64.tar.zst 到 packages/
+export OLLAMA_ARCHIVE_FILE="$PWD/packages/ollama-linux-amd64.tar.zst"
+bash scripts/install.sh --components ollama --profile rtx3090
+```
+
+需要强制使用安装脚本时再设置：
+
+```bash
+export OLLAMA_INSTALL_METHOD=script
+export OLLAMA_INSTALL_SCRIPT_URLS="https://ollama.ac.cn/install.sh"
+```
+
+使用归档包安装后，模型下载器会在 `ollama pull` 前临时启动本地 `ollama serve`；如果系统支持 systemd，脚本也会尝试创建并启动 `ollama.service`。
 
 大文件下载默认不限制总耗时，并开启断点续传。需要限制时可设置 `DOWNLOAD_MAX_TIME`；模型直链下载可设置 `MODEL_DOWNLOAD_MAX_TIME`。
 
@@ -210,6 +225,7 @@ Authorization: Bearer your-key
 - ComfyUI Wan 示例：https://comfyanonymous.github.io/ComfyUI_examples/wan/
 - Wan2.1 ComfyUI 模型：https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged
 - Ollama：https://ollama.com/
+- Ollama Linux ModelScope 镜像：https://modelscope.cn/models/modelscope/ollama-linux
 - Flux FP8 for ComfyUI：https://huggingface.co/Comfy-Org/flux1-schnell
 - SDXL Base 1.0：https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0
 - CosyVoice：https://github.com/FunAudioLLM/CosyVoice

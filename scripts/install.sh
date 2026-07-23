@@ -440,25 +440,72 @@ ollama_archive_name() {
   esac
 }
 
+ollama_archive_urls() {
+  local archive_name="$1"
+  if [[ -n "${OLLAMA_INSTALL_URL:-}" ]]; then
+    printf '%s\n' "$OLLAMA_INSTALL_URL"
+    return
+  fi
+  if [[ -n "${OLLAMA_ARCHIVE_URLS:-}" ]]; then
+    local configured_urls=()
+    read -r -a configured_urls <<<"$OLLAMA_ARCHIVE_URLS"
+    printf '%s\n' "${configured_urls[@]}"
+    return
+  fi
+
+  local modelscope_ref="${OLLAMA_MODELSCOPE_REVISION:-master}"
+  if [[ -n "${OLLAMA_VERSION:-}" ]]; then
+    modelscope_ref="v${OLLAMA_VERSION#v}"
+  fi
+  local modelscope_model="${OLLAMA_MODELSCOPE_MODEL:-modelscope/ollama-linux}"
+
+  if [[ "$archive_name" == "ollama-linux-amd64.tar.zst" && "${OLLAMA_DISABLE_MODELSCOPE:-false}" != "true" ]]; then
+    printf '%s\n' "https://modelscope.cn/models/$modelscope_model/resolve/$modelscope_ref/$archive_name"
+    if [[ "$modelscope_ref" != "master" ]]; then
+      printf '%s\n' "https://modelscope.cn/models/$modelscope_model/resolve/master/$archive_name"
+    fi
+  fi
+  printf '%s\n' "https://ollama.ac.cn/download/$archive_name"
+  printf '%s\n' "https://github.com/ollama/ollama/releases/latest/download/$archive_name"
+}
+
+ollama_local_archive_candidates() {
+  local archive_name="$1"
+  if [[ -n "${OLLAMA_ARCHIVE_FILE:-}" ]]; then
+    printf '%s\n' "$OLLAMA_ARCHIVE_FILE"
+  fi
+  printf '%s\n' "$ROOT/packages/$archive_name"
+  printf '%s\n' "$ROOT/downloads/$archive_name"
+  printf '%s\n' "$ROOT/deps/downloads/$archive_name"
+  printf '%s\n' "$ROOT/$archive_name"
+}
+
+install_ollama_from_local_archive() {
+  local archive_name
+  archive_name="$(ollama_archive_name)"
+  local archive
+  while IFS= read -r archive; do
+    if [[ -f "$archive" ]]; then
+      echo "[ollama] installing local archive $archive"
+      if extract_zstd_archive_to_usr "$archive" && command -v ollama >/dev/null 2>&1; then
+        return
+      fi
+    fi
+  done < <(ollama_local_archive_candidates "$archive_name")
+  return 1
+}
+
 install_ollama_from_archive() {
   local archive_name
   archive_name="$(ollama_archive_name)"
   local urls=()
-  if [[ -n "${OLLAMA_INSTALL_URL:-}" ]]; then
-    urls+=("$OLLAMA_INSTALL_URL")
-  elif [[ -n "${OLLAMA_ARCHIVE_URLS:-}" ]]; then
-    read -r -a urls <<<"$OLLAMA_ARCHIVE_URLS"
-  else
-    urls+=(
-      "https://ollama.ac.cn/download/$archive_name"
-      "https://github.com/ollama/ollama/releases/latest/download/$archive_name"
-    )
-  fi
+  mapfile -t urls < <(ollama_archive_urls "$archive_name")
   local tmp_dir
   tmp_dir="$(mktemp -d)"
   local archive="$tmp_dir/$archive_name"
 
   for url in "${urls[@]}"; do
+    rm -f "$archive"
     echo "[ollama] downloading archive from $url"
     if ! download_with_retries "$url" "$archive"; then
       continue
@@ -472,7 +519,7 @@ install_ollama_from_archive() {
   done
 
   rm -rf "$tmp_dir"
-  echo "Ollama archive download/install failed. Set OLLAMA_INSTALL_URL or OLLAMA_ARCHIVE_URLS to reachable mirror URL(s) and rerun." >&2
+  echo "Ollama archive download/install failed. The default list includes ModelScope, ollama.ac.cn, and GitHub release URLs. Set OLLAMA_ARCHIVE_FILE, OLLAMA_INSTALL_URL, or OLLAMA_ARCHIVE_URLS to a reachable local file or mirror URL and rerun." >&2
   return 1
 }
 
@@ -543,6 +590,7 @@ install_ollama_from_official_script() {
   fi
 
   for url in "${urls[@]}"; do
+    rm -f "$installer"
     echo "[ollama] downloading install script from $url"
     if ! download_with_retries "$url" "$installer"; then
       continue
@@ -580,20 +628,28 @@ install_ollama() {
 
   local method="${OLLAMA_INSTALL_METHOD:-auto}"
   case "$method" in
+    local)
+      echo "[ollama] installing from local archive"
+      install_ollama_from_local_archive
+      ;;
     archive)
       echo "[ollama] installing from archive mirrors"
-      install_ollama_from_archive
+      install_ollama_from_local_archive || install_ollama_from_archive
       ;;
     script)
       echo "[ollama] installing from script mirrors"
       install_ollama_from_official_script || install_ollama_from_archive
       ;;
+    skip)
+      echo "[ollama] skipping Ollama installation because OLLAMA_INSTALL_METHOD=skip"
+      return
+      ;;
     auto)
-      echo "[ollama] installing from archive mirrors, then script mirrors if needed"
-      install_ollama_from_archive || install_ollama_from_official_script
+      echo "[ollama] installing from local archive or archive mirrors, then script mirrors if needed"
+      install_ollama_from_local_archive || install_ollama_from_archive || install_ollama_from_official_script
       ;;
     *)
-      echo "Unknown OLLAMA_INSTALL_METHOD: $method. Use archive, script, or auto." >&2
+      echo "Unknown OLLAMA_INSTALL_METHOD: $method. Use local, archive, script, skip, or auto." >&2
       return 1
       ;;
   esac
