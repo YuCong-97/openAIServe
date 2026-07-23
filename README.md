@@ -39,6 +39,14 @@ export TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128
 bash scripts/install.sh --components comfyui --profile rtx3090 --download-models --start
 ```
 
+如果启动 ComfyUI 时提示 `NVIDIA driver on your system is too old`，说明已安装的 Torch CUDA 版本高于驱动支持。日志里如果显示 `found version 12040`，代表驱动 CUDA 12.4，应重装 cu124：
+
+```bash
+export TORCH_CUDA_VARIANT=cu124
+export TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu124
+bash scripts/install.sh --components comfyui --profile rtx3090 --download-models --start
+```
+
 ComfyUI 仓库默认会依次尝试官方、GitCode、Gitee 镜像；如果你有自己的镜像，可以覆盖：
 
 ```bash

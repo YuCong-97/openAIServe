@@ -178,6 +178,54 @@ git_with_retries() {
   return 1
 }
 
+cuda_version_code() {
+  local version="$1"
+  local major="${version%%.*}"
+  local rest="${version#*.}"
+  local minor="${rest%%.*}"
+  if [[ -z "$major" || "$major" == "$version" ]]; then
+    minor="0"
+  fi
+  echo $((10#$major * 100 + 10#$minor))
+}
+
+nvidia_cuda_version() {
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    return 1
+  fi
+  nvidia-smi | sed -n 's/.*CUDA Version: \([0-9][0-9.]*\).*/\1/p' | head -n 1
+}
+
+torch_cuda_variant() {
+  if [[ -n "${TORCH_CUDA_VARIANT:-}" ]]; then
+    echo "$TORCH_CUDA_VARIANT"
+    return
+  fi
+
+  local cuda_version
+  cuda_version="$(nvidia_cuda_version || true)"
+  if [[ -z "$cuda_version" ]]; then
+    echo "cpu"
+    return
+  fi
+
+  local code
+  code="$(cuda_version_code "$cuda_version")"
+  if ((code >= 1208)); then
+    echo "cu128"
+  elif ((code >= 1206)); then
+    echo "cu126"
+  elif ((code >= 1204)); then
+    echo "cu124"
+  elif ((code >= 1201)); then
+    echo "cu121"
+  elif ((code >= 1108)); then
+    echo "cu118"
+  else
+    echo "cpu"
+  fi
+}
+
 python_cmd() {
   if command -v python3 >/dev/null 2>&1; then
     python3 "$@"
@@ -187,6 +235,51 @@ python_cmd() {
     echo "Neither python3 nor python is available. Install Python 3 and rerun this script." >&2
     exit 1
   fi
+}
+
+torch_index_urls_for_variant() {
+  local variant="$1"
+  urls=()
+
+  if [[ -n "${TORCH_INDEX_URL:-}" ]]; then
+    urls+=("$TORCH_INDEX_URL")
+  fi
+  if [[ -n "${TORCH_INDEX_URLS:-}" ]]; then
+    local configured_urls=()
+    read -r -a configured_urls <<<"$TORCH_INDEX_URLS"
+    urls+=("${configured_urls[@]}")
+  fi
+  if [[ "${TORCH_INDEX_URL_ONLY:-false}" == "true" ]]; then
+    return
+  fi
+  if [[ "$variant" == "cpu" ]]; then
+    urls+=(
+      "https://download.pytorch.org/whl/cpu"
+      "https://mirrors.aliyun.com/pytorch-wheels/cpu"
+      "https://mirror.nju.edu.cn/pytorch/whl/cpu"
+    )
+    return
+  fi
+
+  urls+=(
+    "https://download.pytorch.org/whl/$variant"
+    "https://mirrors.aliyun.com/pytorch-wheels/$variant"
+    "https://mirror.nju.edu.cn/pytorch/whl/$variant"
+  )
+}
+
+torch_runtime_ok() {
+  local python_bin="$1"
+  if ! "$python_bin" -c "import torch" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if command -v nvidia-smi >/dev/null 2>&1 && [[ "${TORCH_ALLOW_CPU:-false}" != "true" ]]; then
+    "$python_bin" -c "import torch; assert torch.cuda.is_available(), 'CUDA unavailable'; torch.cuda.current_device()" >/dev/null 2>&1
+    return
+  fi
+
+  return 0
 }
 
 comfyui_git_urls() {
@@ -251,48 +344,82 @@ torch_packages() {
 
 install_torch() {
   local python_bin="$1"
-  if "$python_bin" -c "import torch" >/dev/null 2>&1; then
-    echo "[comfyui] torch already installed"
+  if torch_runtime_ok "$python_bin"; then
+    echo "[comfyui] torch already installed and runtime check passed"
     return
   fi
 
   local packages
   torch_packages
   packages=("${packages[@]}")
+  local variant
+  variant="$(torch_cuda_variant)"
+  local driver_cuda
+  driver_cuda="$(nvidia_cuda_version || true)"
+
+  if [[ -n "$driver_cuda" ]]; then
+    echo "[comfyui] NVIDIA driver reports CUDA $driver_cuda; selecting PyTorch $variant wheels"
+  else
+    echo "[comfyui] NVIDIA driver not detected; selecting PyTorch $variant wheels"
+  fi
+
+  if "$python_bin" -c "import torch" >/dev/null 2>&1; then
+    echo "[comfyui] existing torch failed runtime check; reinstalling"
+    "$python_bin" -m pip uninstall -y torch torchvision torchaudio >/dev/null 2>&1 || true
+  fi
 
   if [[ -n "${TORCH_INSTALL_CMD:-}" ]]; then
     echo "[comfyui] running custom TORCH_INSTALL_CMD"
     COMFYUI_PYTHON="$python_bin" sh -c "$TORCH_INSTALL_CMD"
-    return
+    if torch_runtime_ok "$python_bin"; then
+      return
+    fi
+    echo "Custom TORCH_INSTALL_CMD completed, but torch runtime check still failed." >&2
+    return 1
   fi
 
   local indexes=()
-  if [[ -n "${TORCH_INDEX_URL:-}" ]]; then
-    indexes+=("$TORCH_INDEX_URL")
-  else
-    indexes+=(
-      "https://download.pytorch.org/whl/cu128"
-      "https://mirrors.aliyun.com/pytorch-wheels/cu128"
-      "https://mirror.nju.edu.cn/pytorch/whl/cu128"
-      "https://download.pytorch.org/whl/cu126"
-      "https://mirrors.aliyun.com/pytorch-wheels/cu126"
-      "https://mirror.nju.edu.cn/pytorch/whl/cu126"
-    )
+  torch_index_urls_for_variant "$variant"
+  indexes=("${urls[@]}")
+
+  if [[ -n "${TORCH_INDEX_URL:-}" && "${TORCH_INDEX_URL_ONLY:-false}" != "true" ]]; then
+    echo "[comfyui] TORCH_INDEX_URL is tried first; auto-selected $variant mirrors will be tried after it if runtime check fails"
   fi
 
   for index_url in "${indexes[@]}"; do
     echo "[comfyui] installing torch from $index_url"
-    if pip_install_with_retries "$python_bin" "${packages[@]}" --index-url "$index_url"; then
+    if pip_install_with_retries "$python_bin" --upgrade --force-reinstall "${packages[@]}" --index-url "$index_url" &&
+      torch_runtime_ok "$python_bin"; then
       return
     fi
+    "$python_bin" -m pip uninstall -y torch torchvision torchaudio >/dev/null 2>&1 || true
   done
 
-  echo "[comfyui] torch index installs failed; trying default pip index" >&2
-  if pip_install_with_retries "$python_bin" "${packages[@]}"; then
-    return
+  if [[ "$variant" == "cpu" || "${TORCH_ALLOW_DEFAULT_PIP:-false}" == "true" ]]; then
+    echo "[comfyui] torch index installs failed; trying default pip index" >&2
+    if pip_install_with_retries "$python_bin" --upgrade --force-reinstall "${packages[@]}" &&
+      torch_runtime_ok "$python_bin"; then
+      return
+    fi
   fi
 
-  echo "Torch install failed. Set TORCH_INDEX_URL to a reachable PyTorch wheel mirror or set TORCH_INSTALL_CMD for a custom install command." >&2
+  if [[ "$variant" == "cu128" || "$variant" == "cu126" ]]; then
+    echo "[comfyui] trying lower CUDA 12.4 wheels as a compatibility fallback"
+    local fallback_urls=()
+    urls=()
+    torch_index_urls_for_variant "cu124"
+    fallback_urls=("${urls[@]}")
+    for index_url in "${fallback_urls[@]}"; do
+      echo "[comfyui] installing torch from $index_url"
+      if pip_install_with_retries "$python_bin" --upgrade --force-reinstall "${packages[@]}" --index-url "$index_url" &&
+        torch_runtime_ok "$python_bin"; then
+        return
+      fi
+      "$python_bin" -m pip uninstall -y torch torchvision torchaudio >/dev/null 2>&1 || true
+    done
+  fi
+
+  echo "Torch install failed or CUDA runtime check failed. Your driver CUDA is '${driver_cuda:-not detected}', selected variant was '$variant'. Set TORCH_CUDA_VARIANT=cu124 or TORCH_INDEX_URL to a reachable compatible PyTorch wheel mirror." >&2
   return 1
 }
 

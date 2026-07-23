@@ -47,6 +47,8 @@ trap cleanup EXIT
 if has_component "ollama"; then
   if url_ok "http://127.0.0.1:11434/api/tags"; then
     echo "[ollama] already running"
+  elif ! command -v ollama >/dev/null 2>&1; then
+    echo "[ollama] command not found; skipping Ollama. Run scripts/install.sh --components ollama first if text generation is needed." >&2
   else
     echo "[ollama] starting"
     ollama serve &
@@ -76,4 +78,3 @@ fi
 echo "[server] starting OpenAI-compatible API at http://127.0.0.1:$PORT"
 cd "$ROOT"
 "$ROOT/.venv/bin/python" -m uvicorn openaiserve.app:app --host "$HOST" --port "$PORT"
-
