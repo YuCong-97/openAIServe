@@ -42,7 +42,15 @@ export OLLAMA_INSTALL_METHOD=script
 export OLLAMA_INSTALL_SCRIPT_URLS="https://ollama.ac.cn/install.sh"
 ```
 
-使用归档包安装后，模型下载器会在 `ollama pull` 前临时启动本地 `ollama serve`；如果系统支持 systemd，脚本也会尝试创建并启动 `ollama.service`。
+使用归档包安装后，脚本会在下载模型前临时启动本地 `ollama serve`；如果系统支持 systemd，也会尝试创建并启动 `ollama.service`。
+
+Ollama 模型默认不直接依赖 `registry.ollama.ai`：`config.yaml` 已为 `qwen3:30b`、`qwen2.5-coder:32b` 和 `qwen3:8b` 配置 ModelScope GGUF 直链，下载后用 `ollama create` 注册成本地模型。只有 GGUF 下载失败时，才会回退到 `ollama pull`。如果不希望触发 registry 兜底：
+
+```bash
+export OLLAMA_PULL_FALLBACK=false
+```
+
+如果模型也需要离线安装，可把 GGUF 放到 `deps/ollama-models/` 或 `packages/ollama-models/`，文件名保持和 `config.yaml` 一致，例如 `Qwen3-30B-A3B-Q4_K_M.gguf`。
 
 大文件下载默认不限制总耗时，并开启断点续传。需要限制时可设置 `DOWNLOAD_MAX_TIME`；模型直链下载可设置 `MODEL_DOWNLOAD_MAX_TIME`。
 
@@ -100,6 +108,7 @@ bash scripts/start.sh --components all
 
 - 文本：`qwen3:30b`
 - 代码：`qwen2.5-coder:32b`
+- Ollama 模型来源：ModelScope GGUF，下载后通过 `ollama create` 注册
 - 图片默认：`flux1-schnell-fp8.safetensors`，1024x1024，4 steps
 - 图片备选：`sd_xl_base_1.0.safetensors`，适合 SDXL LoRA 生态
 - 视频默认：Wan2.1 T2V 1.3B，832x480，33 frames，30 steps，16 fps
@@ -226,6 +235,9 @@ Authorization: Bearer your-key
 - Wan2.1 ComfyUI 模型：https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged
 - Ollama：https://ollama.com/
 - Ollama Linux ModelScope 镜像：https://modelscope.cn/models/modelscope/ollama-linux
+- Qwen3 30B GGUF：https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-GGUF
+- Qwen2.5 Coder 32B GGUF：https://modelscope.cn/models/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF
+- Qwen3 8B GGUF：https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF
 - Flux FP8 for ComfyUI：https://huggingface.co/Comfy-Org/flux1-schnell
 - SDXL Base 1.0：https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0
 - CosyVoice：https://github.com/FunAudioLLM/CosyVoice

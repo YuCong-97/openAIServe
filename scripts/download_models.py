@@ -80,7 +80,7 @@ def ensure_ollama_server() -> subprocess.Popen[bytes] | None:
     raise SystemExit(f"ollama serve did not become ready within 60s. See {log_path}")
 
 
-def run_ollama_pulls(models: list[str]) -> None:
+def run_ollama_pulls(models: list[str | dict[str, Any]]) -> None:
     if not models:
         return
     if shutil.which("ollama") is None:
@@ -88,8 +88,7 @@ def run_ollama_pulls(models: list[str]) -> None:
     process = ensure_ollama_server()
     try:
         for model in models:
-            print(f"[ollama] pulling {model}")
-            subprocess.run(["ollama", "pull", model], check=True)
+            ensure_ollama_model(model)
     finally:
         if process is not None:
             terminate_process(process)
@@ -137,9 +136,9 @@ def render_direct_url(template: str, repo_id: str, filename: str) -> str:
 
 
 def direct_urls(item: dict[str, Any], repo_filename: str | None) -> list[str]:
-    repo_id = item["repo_id"]
+    repo_id = str(item.get("repo_id") or "")
     urls = as_string_list(item.get("source_urls") or item.get("sources") or item.get("urls"))
-    if repo_filename:
+    if repo_id and repo_filename:
         urls.extend(render_direct_url(template, repo_id, repo_filename) for template in direct_url_templates())
 
     deduped = []
@@ -163,6 +162,12 @@ def format_bytes(value: int) -> str:
 
 def download_direct_file(url: str, target: Path) -> None:
     tmp_path = target.with_name(target.name + ".part")
+    marker_path = target.with_name(target.name + ".part.url")
+    if marker_path.exists() and marker_path.read_text(encoding="utf-8").strip() != url:
+        tmp_path.unlink(missing_ok=True)
+        marker_path.unlink(missing_ok=True)
+    marker_path.write_text(url, encoding="utf-8")
+
     if shutil.which("curl"):
         command = [
             "curl",
@@ -183,6 +188,7 @@ def download_direct_file(url: str, target: Path) -> None:
         ]
         subprocess.run(command, check=True)
         tmp_path.replace(target)
+        marker_path.unlink(missing_ok=True)
         return
 
     request = urllib.request.Request(url, headers={"User-Agent": "openAIServe-model-downloader/1.0"})
@@ -209,14 +215,16 @@ def download_direct_file(url: str, target: Path) -> None:
                         last_report = now
 
         tmp_path.replace(target)
+        marker_path.unlink(missing_ok=True)
     except Exception:
         if tmp_path.exists():
             tmp_path.unlink()
+        marker_path.unlink(missing_ok=True)
         raise
 
 
-def download_hf_item(item: dict[str, Any], target_dir: Path) -> None:
-    repo_id = item["repo_id"]
+def download_file_item(item: dict[str, Any], target_dir: Path, label: str = "hf") -> Path:
+    repo_id = str(item.get("repo_id") or "")
     repo_filename = item.get("repo_filename") or item.get("filename")
     local_filename = item.get("local_filename") or (Path(repo_filename).name if repo_filename else None)
     allow_patterns = item.get("allow_patterns")
@@ -225,28 +233,31 @@ def download_hf_item(item: dict[str, Any], target_dir: Path) -> None:
     if repo_filename and local_filename:
         expected = target_dir / local_filename
         if expected.exists():
-            print(f"[hf] exists {expected}")
-            return
+            print(f"[{label}] exists {expected}")
+            return expected
         for url in direct_urls(item, repo_filename):
             try:
                 print(f"[direct] downloading {url} -> {expected}")
                 download_direct_file(url, expected)
-                return
+                return expected
             except Exception as exc:
                 print(f"[direct] failed from {url}: {exc}")
-        for endpoint in hf_endpoints():
-            try:
-                print(f"[hf] downloading {repo_id}/{repo_filename} from {endpoint} -> {expected}")
-                cached_path = hf_hub_download(repo_id=repo_id, filename=repo_filename, endpoint=endpoint)
-                shutil.copy2(cached_path, expected)
-                return
-            except Exception as exc:
-                print(f"[hf] failed from {endpoint}: {exc}")
+        if repo_id:
+            for endpoint in hf_endpoints():
+                try:
+                    print(f"[hf] downloading {repo_id}/{repo_filename} from {endpoint} -> {expected}")
+                    cached_path = hf_hub_download(repo_id=repo_id, filename=repo_filename, endpoint=endpoint)
+                    shutil.copy2(cached_path, expected)
+                    return expected
+                except Exception as exc:
+                    print(f"[hf] failed from {endpoint}: {exc}")
         raise SystemExit(
-            f"Failed to download {repo_id}/{repo_filename}. Set source_urls in config.yaml, "
+            f"Failed to download {repo_id + '/' if repo_id else ''}{repo_filename}. Set source_urls in config.yaml, "
             "MODEL_DIRECT_URL_TEMPLATES, HF_ENDPOINTS, or HF_ENDPOINT to reachable mirror(s)."
         )
 
+    if not repo_id:
+        raise SystemExit(f"Model item must set repo_id for snapshot downloads: {item}")
     for endpoint in hf_endpoints():
         try:
             print(f"[hf] snapshot {repo_id} from {endpoint} -> {target_dir}")
@@ -256,10 +267,159 @@ def download_hf_item(item: dict[str, Any], target_dir: Path) -> None:
                 allow_patterns=allow_patterns,
                 endpoint=endpoint,
             )
-            return
+            return target_dir
         except Exception as exc:
             print(f"[hf] failed from {endpoint}: {exc}")
     raise SystemExit(f"Failed to download {repo_id}. Set HF_ENDPOINTS or HF_ENDPOINT to reachable mirror(s).")
+
+
+def download_hf_item(item: dict[str, Any], target_dir: Path) -> None:
+    download_file_item(item, target_dir)
+
+
+def normalize_ollama_model(item: str | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(item, str):
+        return {"name": item, "pull": item}
+    return dict(item)
+
+
+def ollama_model_name(item: dict[str, Any]) -> str:
+    name = item.get("name") or item.get("model") or item.get("id")
+    if not name:
+        raise SystemExit(f"Ollama model entry is missing name/model/id: {item}")
+    return str(name)
+
+
+def ollama_model_exists(name: str) -> bool:
+    return subprocess.run(["ollama", "show", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def ollama_model_root() -> Path:
+    return resolve_path(os.getenv("OLLAMA_MODEL_DIR", "deps/ollama-models"), ROOT_DIR)
+
+
+def ollama_local_model_candidates(item: dict[str, Any], filename: str | None) -> list[Path]:
+    candidates = []
+    for key in ("local_path", "model_path", "gguf_path"):
+        if item.get(key):
+            candidates.append(resolve_path(str(item[key]), ROOT_DIR))
+    if filename:
+        for base in (
+            os.getenv("OLLAMA_MODEL_DIR"),
+            "deps/ollama-models",
+            "packages/ollama-models",
+            "downloads/ollama-models",
+        ):
+            if base:
+                candidates.append(resolve_path(base, ROOT_DIR) / filename)
+    return candidates
+
+
+def qwen_modelfile(model_path: Path, item: dict[str, Any]) -> str:
+    parameters = {
+        "num_ctx": 32768,
+        "temperature": 0.6,
+        "top_p": 0.95,
+    }
+    parameters.update(item.get("parameters") or {})
+    lines = [f"FROM {model_path.as_posix()}"]
+    for key, value in parameters.items():
+        lines.append(f"PARAMETER {key} {value}")
+    lines.extend(
+        [
+            'TEMPLATE """{{ if .System }}<|im_start|>system',
+            "{{ .System }}<|im_end|>",
+            "{{ end }}{{ range .Messages }}<|im_start|>{{ .Role }}",
+            "{{ .Content }}<|im_end|>",
+            "{{ end }}<|im_start|>assistant",
+            '"""',
+            'PARAMETER stop "<|im_start|>"',
+            'PARAMETER stop "<|im_end|>"',
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def ollama_modelfile_text(model_path: Path, item: dict[str, Any]) -> str:
+    if item.get("modelfile"):
+        return str(item["modelfile"]).replace("{{model_path}}", model_path.as_posix())
+    template = str(item.get("template", "qwen")).lower()
+    if template in {"", "none", "raw"}:
+        return f"FROM {model_path.as_posix()}\n"
+    if template in {"qwen", "chatml"}:
+        return qwen_modelfile(model_path, item)
+    raise SystemExit(f"Unknown Ollama Modelfile template for {ollama_model_name(item)}: {template}")
+
+
+def run_ollama_create(name: str, modelfile_text: str) -> None:
+    modelfile_dir = ollama_model_root() / "modelfiles"
+    modelfile_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = "".join(char if char.isalnum() else "-" for char in name).strip("-")
+    modelfile_path = modelfile_dir / f"{safe_name}.Modelfile"
+    modelfile_path.write_text(modelfile_text, encoding="utf-8")
+    subprocess.run(["ollama", "create", name, "-f", str(modelfile_path)], check=True)
+
+
+def create_ollama_model(item: dict[str, Any], model_path: Path) -> None:
+    name = ollama_model_name(item)
+    print(f"[ollama] creating {name} from {model_path}")
+    run_ollama_create(name, ollama_modelfile_text(model_path.resolve(), item))
+
+
+def create_ollama_from_file(item: dict[str, Any]) -> bool:
+    filename = item.get("local_filename") or item.get("repo_filename") or item.get("filename")
+    filename = Path(str(filename)).name if filename else None
+    for candidate in ollama_local_model_candidates(item, filename):
+        if candidate.exists():
+            create_ollama_model(item, candidate)
+            return True
+
+    if not filename or not (item.get("source_urls") or item.get("sources") or item.get("urls") or item.get("repo_id")):
+        return False
+
+    target_dir = resolve_path(item.get("target", ollama_model_root()), ROOT_DIR)
+    model_path = download_file_item(item, target_dir, label="ollama")
+    create_ollama_model(item, model_path)
+    return True
+
+
+def pull_ollama_model(item: dict[str, Any]) -> None:
+    name = ollama_model_name(item)
+    pull_name = str(item.get("pull") or item.get("pull_model") or name)
+    print(f"[ollama] pulling {pull_name}")
+    subprocess.run(["ollama", "pull", pull_name], check=True)
+    if pull_name != name and not ollama_model_exists(name):
+        print(f"[ollama] creating alias {name} from pulled model {pull_name}")
+        run_ollama_create(name, f"FROM {pull_name}\n")
+
+
+def ensure_ollama_model(raw_item: str | dict[str, Any]) -> None:
+    item = normalize_ollama_model(raw_item)
+    name = ollama_model_name(item)
+    if ollama_model_exists(name):
+        print(f"[ollama] exists {name}")
+        return
+
+    try:
+        if create_ollama_from_file(item):
+            return
+    except SystemExit as exc:
+        print(f"[ollama] failed to create {name} from local/direct GGUF: {exc}")
+    except Exception as exc:
+        print(f"[ollama] failed to create {name} from local/direct GGUF: {exc}")
+
+    pull_fallback = str(os.getenv("OLLAMA_PULL_FALLBACK", str(item.get("pull_fallback", True)))).lower()
+    if pull_fallback not in {"1", "true", "yes", "on"}:
+        raise SystemExit(f"Ollama model {name} is not available locally and OLLAMA_PULL_FALLBACK is disabled.")
+
+    try:
+        pull_ollama_model(item)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(
+            f"Failed to install Ollama model {name}. The Ollama registry may be unreachable from this host. "
+            "Use the configured ModelScope GGUF source, set source_urls to a reachable mirror, place the GGUF under "
+            "deps/ollama-models or packages/ollama-models, or set OLLAMA_PULL_FALLBACK=false to skip registry pulls."
+        ) from exc
 
 
 def download_comfy_models(config: dict[str, Any], items: list[dict[str, Any]], include_optional: bool) -> None:
@@ -284,7 +444,7 @@ def download_cosyvoice_models(items: list[dict[str, Any]], include_optional: boo
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Download Ollama and Hugging Face models for OpenAI Supplier Server.")
+    parser = argparse.ArgumentParser(description="Download direct-mirror, Ollama, and Hugging Face models.")
     parser.add_argument("--config", default=None, help="Path to config.yaml. Defaults to OPENAISERVE_CONFIG/config.yaml.")
     parser.add_argument("--profile", default="rtx3090", help="Model profile name from config.model_profiles.")
     parser.add_argument("--components", default="all", help="Comma list: all,ollama,comfyui,cosyvoice.")

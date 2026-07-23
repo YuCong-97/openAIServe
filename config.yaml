@@ -123,8 +123,28 @@ providers:
 model_profiles:
   rtx3090:
     ollama_models:
-      - qwen3:30b
-      - qwen2.5-coder:32b
+      - name: qwen3:30b
+        repo_id: Qwen/Qwen3-30B-A3B-GGUF
+        filename: Qwen3-30B-A3B-Q4_K_M.gguf
+        source_urls:
+          - https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-GGUF/resolve/master/Qwen3-30B-A3B-Q4_K_M.gguf
+        target: deps/ollama-models
+        template: qwen
+        parameters:
+          num_ctx: 32768
+          temperature: 0.6
+          top_p: 0.95
+      - name: qwen2.5-coder:32b
+        repo_id: Qwen/Qwen2.5-Coder-32B-Instruct-GGUF
+        filename: qwen2.5-coder-32b-instruct-q4_k_m.gguf
+        source_urls:
+          - https://modelscope.cn/models/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/master/qwen2.5-coder-32b-instruct-q4_k_m.gguf
+        target: deps/ollama-models
+        template: qwen
+        parameters:
+          num_ctx: 32768
+          temperature: 0.3
+          top_p: 0.9
     comfyui_models:
       - id: flux-schnell-fp8
         repo_id: Comfy-Org/flux1-schnell
@@ -167,7 +187,17 @@ model_profiles:
 
   minimal:
     ollama_models:
-      - qwen3:8b
+      - name: qwen3:8b
+        repo_id: Qwen/Qwen3-8B-GGUF
+        filename: Qwen3-8B-Q4_K_M.gguf
+        source_urls:
+          - https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf
+        target: deps/ollama-models
+        template: qwen
+        parameters:
+          num_ctx: 32768
+          temperature: 0.6
+          top_p: 0.95
     comfyui_models:
       - id: flux-schnell-fp8
         repo_id: Comfy-Org/flux1-schnell

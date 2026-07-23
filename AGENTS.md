@@ -64,6 +64,8 @@ The Linux installer checks for `python3`, venv support, `git`, `curl`, CA certif
 
 Large downloads use curl resume mode and do not set a total transfer timeout by default. Override installer downloads with `DOWNLOAD_MAX_TIME`; override model direct downloads with `MODEL_DOWNLOAD_MAX_TIME`.
 
+Ollama model downloads first try local GGUF files and configured direct URLs from `config.yaml`, then register them with `ollama create`. The RTX 3090 defaults use ModelScope GGUF URLs for `qwen3:30b` and `qwen2.5-coder:32b`; the minimal profile uses ModelScope GGUF for `qwen3:8b`. `ollama pull` is only a fallback. Set `OLLAMA_PULL_FALLBACK=false` to avoid registry access entirely.
+
 ComfyUI repository install tries official GitHub, GitCode, and Gitee mirrors by default. Override with `COMFYUI_GIT_URL` or a space-separated `COMFYUI_GIT_URLS`. ComfyUI model downloads first try per-model `source_urls` from `config.yaml`; the RTX 3090 defaults include ModelScope URLs. Then they try `MODEL_DIRECT_URL_TEMPLATES`, then `https://huggingface.co` and `https://hf-mirror.com`. Override with `MODEL_DIRECT_URL_TEMPLATES`, `HF_ENDPOINT`, or space-separated `HF_ENDPOINTS`.
 
 Linux text-only deployment:
@@ -192,7 +194,8 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 - If Ollama install fails with `Failed to connect to ollama.com port 443`, pull the latest repository version and rerun. The installer tries ModelScope before `ollama.ac.cn` and GitHub releases; for restricted networks, set `OLLAMA_ARCHIVE_URLS=https://your-mirror/ollama-linux-amd64.tar.zst`.
 - If the host cannot reach any external Ollama source, place `ollama-linux-amd64.tar.zst` under `packages/` or set `OLLAMA_ARCHIVE_FILE=/absolute/path/ollama-linux-amd64.tar.zst`, then rerun with `OLLAMA_INSTALL_METHOD=local`.
 - If Ollama archive downloads start but fail on slow links, rerun after pull. Installer downloads no longer use a 120 second total timeout and will resume partial files with curl.
-- Ollama archive install does not require the upstream install script. The model downloader starts a temporary `ollama serve` before `ollama pull` if no Ollama API is running.
+- Ollama archive install does not require the upstream install script. The model downloader starts a temporary `ollama serve`, installs ModelScope/local GGUF models with `ollama create`, and only falls back to `ollama pull` when needed.
+- If Ollama model download fails with `registry.ollama.ai` connection refused, pull the latest repository version and rerun. For fully restricted hosts, put the GGUF files under `deps/ollama-models/` or `packages/ollama-models/`, keep the configured filenames, and set `OLLAMA_PULL_FALLBACK=false`.
 - If Torch install fails because `download.pytorch.org` is unreachable, rerun with `TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128` or set `TORCH_INSTALL_CMD` to a fully custom command using `$COMFYUI_PYTHON`.
 - If ComfyUI startup fails with `NVIDIA driver on your system is too old` and logs `found version 12040`, the driver supports CUDA 12.4 but the installed Torch wheel is newer. Rerun with `TORCH_CUDA_VARIANT=cu124` and optionally `TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu124`.
 - If ComfyUI clone fails because `github.com` is unreachable, rerun after pull. The installer tries GitCode and Gitee mirrors; for restricted networks, set `COMFYUI_GIT_URLS=https://gitcode.com/gh_mirrors/co/ComfyUI.git`.
