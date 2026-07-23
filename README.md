@@ -23,6 +23,8 @@ Linux：
 bash scripts/install.sh --components all --profile rtx3090 --download-models --start
 ```
 
+Linux 脚本会先检查 `python3`、`python3-venv`、`git`、`curl`；在 apt/dnf/yum/pacman/zypper/apk 系统上会尝试自动安装缺失项。最小化系统如果没有这些包管理器，请先手动安装 Python 3、venv、Git 和 Curl。
+
 只部署文本：
 
 ```powershell
@@ -177,4 +179,3 @@ Authorization: Bearer your-key
 - Flux FP8 for ComfyUI：https://huggingface.co/Comfy-Org/flux1-schnell
 - SDXL Base 1.0：https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0
 - CosyVoice：https://github.com/FunAudioLLM/CosyVoice
-

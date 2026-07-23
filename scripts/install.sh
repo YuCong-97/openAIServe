@@ -42,11 +42,81 @@ has_component() {
   [[ ",${COMPONENTS,,}," == *",all,"* || ",${COMPONENTS,,}," == *",${name},"* ]]
 }
 
+run_privileged() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    echo "This installer needs root privileges to install system packages. Re-run as root or install sudo." >&2
+    exit 1
+  fi
+}
+
+install_linux_prereqs() {
+  echo "[system] checking Linux prerequisites"
+  local missing="false"
+  for cmd in git curl; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing="true"
+    fi
+  done
+  if ! command -v python3 >/dev/null 2>&1; then
+    missing="true"
+  else
+    local venv_check_dir
+    venv_check_dir="$(mktemp -d)"
+    if ! python3 -m venv "$venv_check_dir/check" >/dev/null 2>&1; then
+      missing="true"
+    fi
+    rm -rf "$venv_check_dir"
+  fi
+
+  if [[ "$missing" == "false" ]]; then
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    run_privileged apt-get update
+    run_privileged apt-get install -y python3 python3-venv python3-pip git curl ca-certificates
+  elif command -v dnf >/dev/null 2>&1; then
+    run_privileged dnf install -y python3 python3-pip git curl ca-certificates
+  elif command -v yum >/dev/null 2>&1; then
+    run_privileged yum install -y python3 python3-pip git curl ca-certificates
+  elif command -v pacman >/dev/null 2>&1; then
+    run_privileged pacman -Sy --noconfirm --needed python python-pip git curl ca-certificates
+  elif command -v zypper >/dev/null 2>&1; then
+    run_privileged zypper --non-interactive install python3 python3-pip git curl ca-certificates
+  elif command -v apk >/dev/null 2>&1; then
+    run_privileged apk add --no-cache python3 py3-pip py3-virtualenv git curl ca-certificates
+  else
+    echo "Unsupported Linux package manager. Install python3, python3-venv, git, and curl, then rerun this script." >&2
+    exit 1
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is still unavailable after prerequisite installation." >&2
+    exit 1
+  fi
+  local final_venv_check_dir
+  final_venv_check_dir="$(mktemp -d)"
+  if ! python3 -m venv "$final_venv_check_dir/check" >/dev/null 2>&1; then
+    rm -rf "$final_venv_check_dir"
+    echo "python3 venv support is unavailable. Install python3-venv or the equivalent package, then rerun." >&2
+    exit 1
+  fi
+  rm -rf "$final_venv_check_dir"
+}
+
 python_cmd() {
   if command -v python3 >/dev/null 2>&1; then
     python3 "$@"
-  else
+  elif command -v python >/dev/null 2>&1; then
     python "$@"
+  else
+    echo "Neither python3 nor python is available. Install Python 3 and rerun this script." >&2
+    exit 1
   fi
 }
 
@@ -90,6 +160,7 @@ install_comfyui() {
   "$ROOT/deps/ComfyUI/.venv/bin/python" -m pip install -r "$ROOT/deps/ComfyUI/requirements.txt"
 }
 
+install_linux_prereqs
 install_server
 
 pids=()
@@ -119,4 +190,3 @@ if [[ "$START_AFTER" == "true" ]]; then
 fi
 
 echo "Install complete."
-

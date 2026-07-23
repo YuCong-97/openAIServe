@@ -68,6 +68,8 @@ Linux full deployment:
 bash scripts/install.sh --components all --profile rtx3090 --download-models --start
 ```
 
+The Linux installer checks for `python3`, `python3-venv`, `git`, and `curl` before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. If the host uses another package manager, install Python 3, venv support, Git, and Curl manually before rerunning.
+
 Windows text-only deployment:
 
 ```powershell
@@ -194,6 +196,7 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 ## Common Troubleshooting
 
 - If `/v1/chat/completions` fails, verify Ollama is running at `http://127.0.0.1:11434`.
+- If Linux deployment fails with `python: command not found`, pull the latest repository version and rerun `bash scripts/install.sh ...`; older installers did not auto-install Python.
 - If image/video generation fails, verify ComfyUI is running at `http://127.0.0.1:8188`.
 - If ComfyUI reports missing nodes, update ComfyUI and confirm the installed version includes Wan video nodes.
 - If ComfyUI reports missing models, compare `config.yaml` model file names with files under `deps/ComfyUI/models`.
@@ -217,4 +220,3 @@ git add <changed-files>
 git commit -m "<concise commit message>"
 git push
 ```
-
