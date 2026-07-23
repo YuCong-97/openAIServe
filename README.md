@@ -39,6 +39,18 @@ export TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128
 bash scripts/install.sh --components comfyui --profile rtx3090 --download-models --start
 ```
 
+ComfyUI 仓库默认会依次尝试官方、GitCode、Gitee 镜像；如果你有自己的镜像，可以覆盖：
+
+```bash
+export COMFYUI_GIT_URLS="https://gitcode.com/gh_mirrors/co/ComfyUI.git https://gitee.com/mirrors/ComfyUI.git"
+```
+
+ComfyUI 模型默认会尝试 Hugging Face 官方和 `https://hf-mirror.com`，也可以覆盖：
+
+```bash
+export HF_ENDPOINTS="https://hf-mirror.com https://huggingface.co"
+```
+
 只部署文本：
 
 ```powershell

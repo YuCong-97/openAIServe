@@ -70,6 +70,8 @@ bash scripts/install.sh --components all --profile rtx3090 --download-models --s
 
 The Linux installer checks for `python3`, venv support, `git`, `curl`, CA certificates, and `zstd` before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. On apt systems it retries `apt-get update` and `apt-get install --fix-missing` because some mirrors temporarily serve mismatched indexes during sync. If `ollama.com` is unreachable, it tries the China mirror `https://ollama.ac.cn/install.sh`, then `https://ollama.ac.cn/download/ollama-linux-*.tar.zst`, then the GitHub release archive. If all defaults are unreachable, set `OLLAMA_INSTALL_SCRIPT_URLS`, `OLLAMA_ARCHIVE_URLS`, or `OLLAMA_INSTALL_URL` to reachable mirrors. If the host uses another package manager, install Python 3, venv support, Git, Curl, CA certificates, and zstd manually before rerunning.
 
+ComfyUI repository install tries official GitHub, GitCode, and Gitee mirrors by default. Override with `COMFYUI_GIT_URL` or a space-separated `COMFYUI_GIT_URLS`. ComfyUI model downloads try `https://huggingface.co` and `https://hf-mirror.com` by default. Override with `HF_ENDPOINT` or space-separated `HF_ENDPOINTS`.
+
 Windows text-only deployment:
 
 ```powershell
@@ -200,6 +202,8 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 - If apt fails with `File has unexpected size` or `Mirror sync in progress`, pull the latest repository version and rerun. The installer retries apt with `--fix-missing`; if the mirror keeps failing, wait a few minutes or switch `/etc/apt/sources.list` to another Ubuntu mirror.
 - If Ollama install fails with `Failed to connect to ollama.com port 443`, pull the latest repository version and rerun. The installer tries `ollama.ac.cn` before GitHub releases; for restricted networks, set `OLLAMA_ARCHIVE_URLS=https://your-mirror/ollama-linux-amd64.tar.zst`.
 - If Torch install fails because `download.pytorch.org` is unreachable, rerun with `TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128` or set `TORCH_INSTALL_CMD` to a fully custom command using `$COMFYUI_PYTHON`.
+- If ComfyUI clone fails because `github.com` is unreachable, rerun after pull. The installer tries GitCode and Gitee mirrors; for restricted networks, set `COMFYUI_GIT_URLS=https://gitcode.com/gh_mirrors/co/ComfyUI.git`.
+- If ComfyUI model download fails because Hugging Face is unreachable, rerun with `HF_ENDPOINTS="https://hf-mirror.com https://huggingface.co"`.
 - If image/video generation fails, verify ComfyUI is running at `http://127.0.0.1:8188`.
 - If ComfyUI reports missing nodes, update ComfyUI and confirm the installed version includes Wan video nodes.
 - If ComfyUI reports missing models, compare `config.yaml` model file names with files under `deps/ComfyUI/models`.

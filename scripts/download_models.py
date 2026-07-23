@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,13 @@ def run_ollama_pulls(models: list[str]) -> None:
         subprocess.run(["ollama", "pull", model], check=True)
 
 
+def hf_endpoints() -> list[str]:
+    configured = os.getenv("HF_ENDPOINTS") or os.getenv("HF_ENDPOINT")
+    if configured:
+        return [item.strip().rstrip("/") for item in configured.split() if item.strip()]
+    return ["https://huggingface.co", "https://hf-mirror.com"]
+
+
 def download_hf_item(item: dict[str, Any], target_dir: Path) -> None:
     repo_id = item["repo_id"]
     repo_filename = item.get("repo_filename") or item.get("filename")
@@ -44,13 +52,31 @@ def download_hf_item(item: dict[str, Any], target_dir: Path) -> None:
         if expected.exists():
             print(f"[hf] exists {expected}")
             return
-        print(f"[hf] downloading {repo_id}/{repo_filename} -> {expected}")
-        cached_path = hf_hub_download(repo_id=repo_id, filename=repo_filename)
-        shutil.copy2(cached_path, expected)
-        return
+        for endpoint in hf_endpoints():
+            try:
+                print(f"[hf] downloading {repo_id}/{repo_filename} from {endpoint} -> {expected}")
+                cached_path = hf_hub_download(repo_id=repo_id, filename=repo_filename, endpoint=endpoint)
+                shutil.copy2(cached_path, expected)
+                return
+            except Exception as exc:
+                print(f"[hf] failed from {endpoint}: {exc}")
+        raise SystemExit(
+            f"Failed to download {repo_id}/{repo_filename}. Set HF_ENDPOINTS or HF_ENDPOINT to reachable mirror(s)."
+        )
 
-    print(f"[hf] snapshot {repo_id} -> {target_dir}")
-    snapshot_download(repo_id=repo_id, local_dir=str(target_dir), allow_patterns=allow_patterns)
+    for endpoint in hf_endpoints():
+        try:
+            print(f"[hf] snapshot {repo_id} from {endpoint} -> {target_dir}")
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=str(target_dir),
+                allow_patterns=allow_patterns,
+                endpoint=endpoint,
+            )
+            return
+        except Exception as exc:
+            print(f"[hf] failed from {endpoint}: {exc}")
+    raise SystemExit(f"Failed to download {repo_id}. Set HF_ENDPOINTS or HF_ENDPOINT to reachable mirror(s).")
 
 
 def download_comfy_models(config: dict[str, Any], items: list[dict[str, Any]], include_optional: bool) -> None:

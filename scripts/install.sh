@@ -167,6 +167,17 @@ pip_install_with_retries() {
   return 1
 }
 
+git_with_retries() {
+  for attempt in 1 2 3; do
+    if GIT_TERMINAL_PROMPT=0 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 "$@"; then
+      return
+    fi
+    echo "[git] failed attempt $attempt/3: git $*" >&2
+    sleep $((attempt * 5))
+  done
+  return 1
+}
+
 python_cmd() {
   if command -v python3 >/dev/null 2>&1; then
     python3 "$@"
@@ -176,6 +187,58 @@ python_cmd() {
     echo "Neither python3 nor python is available. Install Python 3 and rerun this script." >&2
     exit 1
   fi
+}
+
+comfyui_git_urls() {
+  if [[ -n "${COMFYUI_GIT_URL:-}" ]]; then
+    urls=("$COMFYUI_GIT_URL")
+  elif [[ -n "${COMFYUI_GIT_URLS:-}" ]]; then
+    read -r -a urls <<<"$COMFYUI_GIT_URLS"
+  else
+    urls=(
+      "https://github.com/Comfy-Org/ComfyUI.git"
+      "https://gitcode.com/gh_mirrors/co/ComfyUI.git"
+      "https://gitee.com/mirrors/ComfyUI.git"
+      "https://gitee.com/mirrors/comfyui.git"
+    )
+  fi
+}
+
+clone_comfyui() {
+  local comfy_dir="$1"
+  local urls=()
+  comfyui_git_urls
+
+  for url in "${urls[@]}"; do
+    local tmp_dir="$comfy_dir.clone.$$"
+    rm -rf "$tmp_dir"
+    echo "[comfyui] cloning from $url"
+    if git_with_retries clone --depth 1 "$url" "$tmp_dir"; then
+      mv "$tmp_dir" "$comfy_dir"
+      return
+    fi
+    rm -rf "$tmp_dir"
+  done
+
+  echo "ComfyUI clone failed. Set COMFYUI_GIT_URL or COMFYUI_GIT_URLS to reachable mirror URL(s) and rerun." >&2
+  return 1
+}
+
+update_comfyui() {
+  local comfy_dir="$1"
+  local urls=()
+  comfyui_git_urls
+
+  for url in "${urls[@]}"; do
+    echo "[comfyui] updating from $url"
+    git -C "$comfy_dir" remote set-url origin "$url" || true
+    if git_with_retries -C "$comfy_dir" pull --ff-only; then
+      return
+    fi
+  done
+
+  echo "ComfyUI update failed. Set COMFYUI_GIT_URL or COMFYUI_GIT_URLS to reachable mirror URL(s) and rerun." >&2
+  return 1
 }
 
 torch_packages() {
@@ -345,9 +408,9 @@ install_comfyui() {
   echo "[comfyui] installing ComfyUI"
   mkdir -p "$ROOT/deps"
   if [[ ! -d "$ROOT/deps/ComfyUI" ]]; then
-    git clone https://github.com/comfyanonymous/ComfyUI.git "$ROOT/deps/ComfyUI"
+    clone_comfyui "$ROOT/deps/ComfyUI"
   else
-    git -C "$ROOT/deps/ComfyUI" pull --ff-only
+    update_comfyui "$ROOT/deps/ComfyUI"
   fi
 
   if [[ ! -x "$ROOT/deps/ComfyUI/.venv/bin/python" ]]; then
