@@ -8,6 +8,11 @@ DOWNLOAD_MODELS="false"
 INCLUDE_OPTIONAL="false"
 START_AFTER="false"
 
+# Linux deployment defaults are tuned for RTX 3090 hosts on restricted China networks.
+export OLLAMA_PULL_FALLBACK="${OLLAMA_PULL_FALLBACK:-false}"
+export MODEL_DIRECT_URL_TEMPLATES="${MODEL_DIRECT_URL_TEMPLATES:-https://modelscope.cn/models/{repo_id}/resolve/master/{filename}}"
+export HF_ENDPOINTS="${HF_ENDPOINTS:-https://hf-mirror.com https://huggingface.co}"
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --components)
@@ -256,17 +261,17 @@ torch_index_urls_for_variant() {
   fi
   if [[ "$variant" == "cpu" ]]; then
     urls+=(
-      "https://download.pytorch.org/whl/cpu"
       "https://mirrors.aliyun.com/pytorch-wheels/cpu"
       "https://mirror.nju.edu.cn/pytorch/whl/cpu"
+      "https://download.pytorch.org/whl/cpu"
     )
     return
   fi
 
   urls+=(
-    "https://download.pytorch.org/whl/$variant"
     "https://mirrors.aliyun.com/pytorch-wheels/$variant"
     "https://mirror.nju.edu.cn/pytorch/whl/$variant"
+    "https://download.pytorch.org/whl/$variant"
   )
 }
 
@@ -291,10 +296,10 @@ comfyui_git_urls() {
     read -r -a urls <<<"$COMFYUI_GIT_URLS"
   else
     urls=(
-      "https://github.com/Comfy-Org/ComfyUI.git"
       "https://gitcode.com/gh_mirrors/co/ComfyUI.git"
       "https://gitee.com/mirrors/ComfyUI.git"
       "https://gitee.com/mirrors/comfyui.git"
+      "https://github.com/Comfy-Org/ComfyUI.git"
     )
   fi
 }
@@ -584,8 +589,8 @@ install_ollama_from_official_script() {
     read -r -a urls <<<"$OLLAMA_INSTALL_SCRIPT_URLS"
   else
     urls+=(
-      "https://ollama.com/install.sh"
       "https://ollama.ac.cn/install.sh"
+      "https://ollama.com/install.sh"
     )
   fi
 

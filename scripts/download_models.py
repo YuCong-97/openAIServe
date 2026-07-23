@@ -98,7 +98,7 @@ def hf_endpoints() -> list[str]:
     configured = os.getenv("HF_ENDPOINTS") or os.getenv("HF_ENDPOINT")
     if configured:
         return [item.strip().rstrip("/") for item in configured.split() if item.strip()]
-    return ["https://huggingface.co", "https://hf-mirror.com"]
+    return ["https://hf-mirror.com", "https://huggingface.co"]
 
 
 def direct_url_templates() -> list[str]:
@@ -408,7 +408,7 @@ def ensure_ollama_model(raw_item: str | dict[str, Any]) -> None:
     except Exception as exc:
         print(f"[ollama] failed to create {name} from local/direct GGUF: {exc}")
 
-    pull_fallback = str(os.getenv("OLLAMA_PULL_FALLBACK", str(item.get("pull_fallback", True)))).lower()
+    pull_fallback = str(os.getenv("OLLAMA_PULL_FALLBACK", str(item.get("pull_fallback", False)))).lower()
     if pull_fallback not in {"1", "true", "yes", "on"}:
         raise SystemExit(f"Ollama model {name} is not available locally and OLLAMA_PULL_FALLBACK is disabled.")
 

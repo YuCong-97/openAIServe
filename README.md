@@ -1,85 +1,19 @@
 # OpenAI Supplier Server
 
-一键部署的 OpenAI 兼容供应商服务器：
+Linux 一键部署的 OpenAI 兼容供应商服务器：
 
 - 文本生成：Ollama
 - 图片生成：ComfyUI，默认 Flux schnell FP8，备选 SDXL
-- 视频生成：ComfyUI，内置 RTX 3090 友好的 Wan2.1 T2V 1.3B 工作流
-- 角色锁定：图片与视频都支持多角色 LoRA
-- 音频生成：预留 CosyVoice 3 provider 与 `/v1/audio/speech`
-- Linux 一键部署，Ollama 和 ComfyUI 安装可并行
+- 视频生成：ComfyUI，RTX 3090 默认 Wan2.1 T2V 1.3B 工作流
+- 角色锁定：图片与视频均支持多角色 LoRA
+- 音频生成：预留 CosyVoice 3 provider
 
 ## 快速开始
 
-Linux：
+完整部署并启动：
 
 ```bash
 bash scripts/install.sh --components all --profile rtx3090 --download-models --start
-```
-
-Linux 脚本会先检查 `python3`、`python3-venv`、`git`、`curl`；在 apt/dnf/yum/pacman/zypper/apk 系统上会尝试自动安装缺失项。最小化系统如果没有这些包管理器，请先手动安装 Python 3、venv、Git 和 Curl。
-如果 apt 提示 `File has unexpected size` 或 `Mirror sync in progress`，通常是当前镜像站同步中。最新版脚本会自动清理 apt 缓存并重试；如果仍失败，稍后重跑或切换 `/etc/apt/sources.list` 到其他 Ubuntu 镜像。
-Ollama 安装默认使用 `auto` 模式：先查找本地离线包，再尝试 ModelScope 国内归档包，然后回退到 `ollama.ac.cn`、GitHub release 和安装脚本。若默认地址都不可达，可以设置自己的镜像：
-
-```bash
-export OLLAMA_INSTALL_METHOD=auto
-export OLLAMA_ARCHIVE_URLS="https://modelscope.cn/models/modelscope/ollama-linux/resolve/master/ollama-linux-amd64.tar.zst"
-```
-
-如果服务器无法访问任何外部 Ollama 源，可以在其他机器下载 `ollama-linux-amd64.tar.zst` 后传到项目目录：
-
-```bash
-mkdir -p packages
-# 上传或拷贝 ollama-linux-amd64.tar.zst 到 packages/
-export OLLAMA_ARCHIVE_FILE="$PWD/packages/ollama-linux-amd64.tar.zst"
-bash scripts/install.sh --components ollama --profile rtx3090
-```
-
-需要强制使用安装脚本时再设置：
-
-```bash
-export OLLAMA_INSTALL_METHOD=script
-export OLLAMA_INSTALL_SCRIPT_URLS="https://ollama.ac.cn/install.sh"
-```
-
-使用归档包安装后，脚本会在下载模型前临时启动本地 `ollama serve`；如果系统支持 systemd，也会尝试创建并启动 `ollama.service`。
-
-Ollama 模型默认不直接依赖 `registry.ollama.ai`：`config.yaml` 已为 `qwen3:30b`、`qwen2.5-coder:32b` 和 `qwen3:8b` 配置 ModelScope GGUF 直链，下载后用 `ollama create` 注册成本地模型。只有 GGUF 下载失败时，才会回退到 `ollama pull`。如果不希望触发 registry 兜底：
-
-```bash
-export OLLAMA_PULL_FALLBACK=false
-```
-
-如果模型也需要离线安装，可把 GGUF 放到 `deps/ollama-models/` 或 `packages/ollama-models/`，文件名保持和 `config.yaml` 一致，例如 `Qwen3-30B-A3B-Q4_K_M.gguf`。
-
-大文件下载默认不限制总耗时，并开启断点续传。需要限制时可设置 `DOWNLOAD_MAX_TIME`；模型直链下载可设置 `MODEL_DOWNLOAD_MAX_TIME`。
-
-如果 `download.pytorch.org` 不可达，可以显式使用阿里云 PyTorch wheel 镜像：
-
-```bash
-export TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu128
-bash scripts/install.sh --components comfyui --profile rtx3090 --download-models --start
-```
-
-如果启动 ComfyUI 时提示 `NVIDIA driver on your system is too old`，说明已安装的 Torch CUDA 版本高于驱动支持。日志里如果显示 `found version 12040`，代表驱动 CUDA 12.4，应重装 cu124：
-
-```bash
-export TORCH_CUDA_VARIANT=cu124
-export TORCH_INDEX_URL=https://mirrors.aliyun.com/pytorch-wheels/cu124
-bash scripts/install.sh --components comfyui --profile rtx3090 --download-models --start
-```
-
-ComfyUI 仓库默认会依次尝试官方、GitCode、Gitee 镜像；如果你有自己的镜像，可以覆盖：
-
-```bash
-export COMFYUI_GIT_URLS="https://gitcode.com/gh_mirrors/co/ComfyUI.git https://gitee.com/mirrors/ComfyUI.git"
-```
-
-ComfyUI 模型会优先使用 `config.yaml` 里的 `source_urls`，RTX 3090 默认模型已配置 ModelScope 国内直链；之后会尝试 `MODEL_DIRECT_URL_TEMPLATES`，最后回退到 Hugging Face 官方和 `https://hf-mirror.com`。如果你有自己的模型镜像，可以覆盖：
-
-```bash
-export MODEL_DIRECT_URL_TEMPLATES="https://modelscope.cn/models/{repo_id}/resolve/master/{filename}"
-export HF_ENDPOINTS="https://hf-mirror.com https://huggingface.co"
 ```
 
 只部署文本：
@@ -100,30 +34,32 @@ bash scripts/install.sh --components comfyui --profile rtx3090 --download-models
 bash scripts/start.sh --components all
 ```
 
-默认服务地址：`http://127.0.0.1:8000`。
+默认服务地址：`http://127.0.0.1:8000`
 
-## RTX 3090 默认工作流
+## 内置默认
 
-`config.yaml` 已按 RTX 3090 24GB 配好：
+- Linux-only 部署，安装脚本自动检查并安装基础依赖。
+- 国内网络优先：Ollama、ComfyUI、PyTorch、Ollama GGUF、ComfyUI 模型下载源已写入脚本和 `config.yaml`。
+- Ollama 模型默认使用 ModelScope GGUF 下载后 `ollama create`，不默认访问 `registry.ollama.ai`。
+- 大文件下载默认支持断点续传。
+- 离线包目录：`packages/`、`downloads/`、`deps/ollama-models/`、`packages/ollama-models/`。
+
+RTX 3090 profile 默认：
 
 - 文本：`qwen3:30b`
 - 代码：`qwen2.5-coder:32b`
-- Ollama 模型来源：ModelScope GGUF，下载后通过 `ollama create` 注册
-- 图片默认：`flux1-schnell-fp8.safetensors`，1024x1024，4 steps
-- 图片备选：`sd_xl_base_1.0.safetensors`，适合 SDXL LoRA 生态
-- 视频默认：Wan2.1 T2V 1.3B，832x480，33 frames，30 steps，16 fps
+- 图片：Flux schnell FP8 / SDXL
+- 视频：Wan2.1 T2V 1.3B，832x480，33 frames
 
-ComfyUI 模型落点：
+## LoRA
 
-- Checkpoint：`deps/ComfyUI/models/checkpoints`
-- Wan diffusion model：`deps/ComfyUI/models/diffusion_models`
-- Wan text encoder：`deps/ComfyUI/models/text_encoders`
-- Wan VAE：`deps/ComfyUI/models/vae`
-- LoRA：`deps/ComfyUI/models/loras`
+LoRA 文件放到：
 
-## 角色 LoRA
+```text
+deps/ComfyUI/models/loras
+```
 
-`config.yaml` 里每个角色按模型族分 LoRA：
+`config.yaml` 中按模型族配置角色 LoRA：
 
 ```yaml
 characters:
@@ -137,16 +73,7 @@ characters:
         - name: protagonist_wan21_video_v1.safetensors
 ```
 
-图片与视频会自动按当前工作流选择对应 LoRA。单角色用 `character`，多角色用 `characters`：
-
-```json
-{
-  "characters": ["protagonist", "supporting_a"],
-  "prompt": "two characters walk through a rainy neon street"
-}
-```
-
-视频 LoRA 会动态串到 `UNETLoader -> LoraLoaderModelOnly* -> ModelSamplingSD3`，因此多个角色的 Wan LoRA 可以同时应用到视频生成。
+请求中单角色使用 `character`，多角色使用 `characters`。
 
 ## API 示例
 
@@ -166,78 +93,26 @@ curl http://127.0.0.1:8000/v1/images/generations \
   -d '{"model":"comfyui-flux","character":"protagonist","prompt":"cinematic portrait, soft rim light","size":"1024x1024","response_format":"url"}'
 ```
 
-视频锁主角：
-
-```bash
-curl http://127.0.0.1:8000/v1/videos/generations \
-  -H "Content-Type: application/json" \
-  -d '{"model":"comfyui-video","character":"protagonist","prompt":"the protagonist turns toward camera, wind in hair","response_format":"url"}'
-```
-
 视频多角色：
 
 ```bash
 curl http://127.0.0.1:8000/v1/videos/generations \
   -H "Content-Type: application/json" \
-  -d '{"characters":["protagonist","supporting_a"],"prompt":"the two characters walk side by side in a cinematic street scene","frames":33,"response_format":"url"}'
-```
-
-## 自定义视频工作流
-
-默认视频用内置 Wan2.1 T2V 1.3B API 工作流。后续如果改用 Wan2.1 I2V、AnimateDiff 或其他 ComfyUI 自定义节点，可以改回模板模式：
-
-```yaml
-providers:
-  comfyui:
-    video:
-      workflow_template: workflows/custom_video_api.json
-```
-
-模板中可以使用这些占位符：`{{prompt}}`、`{{negative_prompt}}`、`{{seed}}`、`{{width}}`、`{{height}}`、`{{frames}}`、`{{steps}}`、`{{lora_0_name}}`、`{{lora_0_strength_model}}`。
-
-## CosyVoice 3 预留
-
-`/v1/audio/speech` 已经存在，但默认返回未启用提示。后续接入 CosyVoice 3 时，实现 `openaiserve/providers/cosyvoice.py` 并打开：
-
-```yaml
-providers:
-  cosyvoice3:
-    enabled: true
-    base_url: http://127.0.0.1:50000
+  -d '{"model":"comfyui-video","characters":["protagonist","supporting_a"],"prompt":"two characters walk through a rainy neon street","frames":33,"response_format":"url"}'
 ```
 
 ## 鉴权
 
-本地测试默认允许无 key。生产环境建议设置：
+本地默认允许无 key。生产环境设置：
 
 ```bash
 export OPENAISERVE_API_KEY="your-key"
 ```
 
-或在 `config.yaml` 中设置：
+或在 `config.yaml` 中配置：
 
 ```yaml
 auth:
   api_key: your-key
   allow_no_key: false
 ```
-
-请求使用：
-
-```text
-Authorization: Bearer your-key
-```
-
-## 官方参考
-
-- ComfyUI 文档：https://docs.comfy.org/
-- ComfyUI Wan 示例：https://comfyanonymous.github.io/ComfyUI_examples/wan/
-- Wan2.1 ComfyUI 模型：https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged
-- Ollama：https://ollama.com/
-- Ollama Linux ModelScope 镜像：https://modelscope.cn/models/modelscope/ollama-linux
-- Qwen3 30B GGUF：https://modelscope.cn/models/Qwen/Qwen3-30B-A3B-GGUF
-- Qwen2.5 Coder 32B GGUF：https://modelscope.cn/models/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF
-- Qwen3 8B GGUF：https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF
-- Flux FP8 for ComfyUI：https://huggingface.co/Comfy-Org/flux1-schnell
-- SDXL Base 1.0：https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0
-- CosyVoice：https://github.com/FunAudioLLM/CosyVoice
