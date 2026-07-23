@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .env
 config.yaml
+config/runtime.env
+config/comfyui_extra_model_paths.yaml
 deps/
 downloads/
 packages/

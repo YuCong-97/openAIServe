@@ -71,6 +71,7 @@ bash scripts/start.sh --components all
 - ComfyUI clone: GitCode/Gitee first, GitHub fallback.
 - PyTorch wheels: Aliyun/NJU first, official fallback.
 - ComfyUI requirements install filters `torch`, `torchvision`, and `torchaudio`; `install_torch` owns CUDA wheel selection.
+- ComfyUI model storage: `COMFYUI_MODEL_DIR` can point at a large disk; `start.sh` adds it through `extra_model_paths.yaml`.
 - Local offline bundle: `packages/ollama-linux-*.tar.zst`, `packages/repos/ComfyUI(.tar.gz)`, `packages/wheels/*`, `packages/ollama-models/*`, and `packages/comfyui-models/*` are preferred before network downloads.
 - ComfyUI models: ModelScope direct URLs in `config.yaml`, Hugging Face fallback.
 

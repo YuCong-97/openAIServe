@@ -2,11 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "$ROOT/config/runtime.env" ]]; then
+  source "$ROOT/config/runtime.env"
+fi
+
 COMPONENTS="all"
 HOST="0.0.0.0"
 PORT="8000"
 
 export OLLAMA_MODELS="${OLLAMA_MODELS:-$ROOT/deps/ollama-store}"
+export COMFYUI_MODEL_DIR="${COMFYUI_MODEL_DIR:-$ROOT/deps/ComfyUI/models}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,6 +41,28 @@ has_component() {
 
 url_ok() {
   curl -fsS --max-time 2 "$1" >/dev/null 2>&1
+}
+
+write_comfyui_extra_model_paths_config() {
+  local config_path="$ROOT/config/comfyui_extra_model_paths.yaml"
+  mkdir -p "$(dirname "$config_path")" "$COMFYUI_MODEL_DIR"
+  cat >"$config_path" <<YAML
+openaiserve:
+  base_path: "$COMFYUI_MODEL_DIR"
+  checkpoints: checkpoints
+  clip: clip
+  clip_vision: clip_vision
+  configs: configs
+  controlnet: controlnet
+  diffusion_models: diffusion_models
+  embeddings: embeddings
+  loras: loras
+  text_encoders: text_encoders
+  unet: unet
+  upscale_models: upscale_models
+  vae: vae
+YAML
+  printf '%s\n' "$config_path"
 }
 
 pids=()
@@ -68,7 +95,13 @@ if has_component "comfyui"; then
       echo "ComfyUI venv not found. Run scripts/install.sh --components comfyui first." >&2
       exit 1
     fi
-    (cd "$ROOT/deps/ComfyUI" && "$ROOT/deps/ComfyUI/.venv/bin/python" main.py --listen 127.0.0.1 --port 8188) &
+    comfy_args=(main.py --listen 127.0.0.1 --port 8188)
+    if [[ "$COMFYUI_MODEL_DIR" != "$ROOT/deps/ComfyUI/models" ]]; then
+      extra_model_paths_config="$(write_comfyui_extra_model_paths_config)"
+      echo "[comfyui] using extra model path: $COMFYUI_MODEL_DIR"
+      comfy_args+=(--extra-model-paths-config "$extra_model_paths_config")
+    fi
+    (cd "$ROOT/deps/ComfyUI" && "$ROOT/deps/ComfyUI/.venv/bin/python" "${comfy_args[@]}") &
     pids+=("$!")
   fi
 fi

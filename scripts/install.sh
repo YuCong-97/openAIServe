@@ -2,6 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -f "$ROOT/config/runtime.env" ]]; then
+  source "$ROOT/config/runtime.env"
+fi
+
 COMPONENTS="all"
 PROFILE="rtx3090"
 DOWNLOAD_MODELS="false"
@@ -22,6 +26,19 @@ set_default_env MODEL_DIRECT_URL_TEMPLATES "https://modelscope.cn/models/{repo_i
 set_default_env HF_ENDPOINTS "https://hf-mirror.com https://huggingface.co"
 set_default_env PIP_INDEX_URL "https://pypi.tuna.tsinghua.edu.cn/simple"
 set_default_env OLLAMA_MODELS "$ROOT/deps/ollama-store"
+set_default_env COMFYUI_MODEL_DIR "$ROOT/deps/ComfyUI/models"
+
+persist_runtime_env() {
+  if [[ "$OLLAMA_MODELS" == "$ROOT/deps/ollama-store" && "$COMFYUI_MODEL_DIR" == "$ROOT/deps/ComfyUI/models" ]]; then
+    return
+  fi
+
+  mkdir -p "$ROOT/config"
+  {
+    printf 'export OLLAMA_MODELS=%q\n' "$OLLAMA_MODELS"
+    printf 'export COMFYUI_MODEL_DIR=%q\n' "$COMFYUI_MODEL_DIR"
+  } >"$ROOT/config/runtime.env"
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -886,6 +903,7 @@ install_comfyui() {
 
 install_linux_prereqs
 install_server
+persist_runtime_env
 
 pids=()
 pid_names=()

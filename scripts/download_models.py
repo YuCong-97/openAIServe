@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import errno
 import hashlib
 import os
 import shutil
@@ -24,6 +25,10 @@ from openaiserve.config import load_config, resolve_path  # noqa: E402
 
 
 class OllamaCreateError(RuntimeError):
+    pass
+
+
+class DownloadDestinationError(RuntimeError):
     pass
 
 
@@ -171,13 +176,53 @@ def format_bytes(value: int) -> str:
     return f"{value} B"
 
 
+def disk_free_text(path: Path) -> str:
+    probe = path if path.exists() else path.parent
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        usage = shutil.disk_usage(probe)
+        return f"{format_bytes(usage.free)} free on {probe}"
+    except OSError:
+        return f"free space unknown for {path}"
+
+
+def remote_content_length(url: str) -> int | None:
+    request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "openAIServe-model-downloader/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            value = response.headers.get("Content-Length")
+            return int(value) if value else None
+    except Exception:
+        return None
+
+
+def ensure_enough_space(url: str, target: Path, tmp_path: Path) -> None:
+    expected_size = remote_content_length(url)
+    if expected_size is None:
+        return
+
+    existing_size = tmp_path.stat().st_size if tmp_path.exists() else 0
+    remaining_size = max(expected_size - existing_size, 0)
+    reserve = int(os.getenv("MODEL_DOWNLOAD_MIN_FREE_BYTES", str(1024 * 1024 * 1024)))
+    usage = shutil.disk_usage(target.parent)
+    if usage.free < remaining_size + reserve:
+        raise DownloadDestinationError(
+            f"Not enough disk space for {target}. Need about {format_bytes(remaining_size + reserve)}, "
+            f"but only {format_bytes(usage.free)} is free on {target.parent}. "
+            "Set COMFYUI_MODEL_DIR to a large disk path or prepare packages/comfyui-models locally."
+        )
+
+
 def download_direct_file(url: str, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = target.with_name(target.name + ".part")
     marker_path = target.with_name(target.name + ".part.url")
     if marker_path.exists() and marker_path.read_text(encoding="utf-8").strip() != url:
         tmp_path.unlink(missing_ok=True)
         marker_path.unlink(missing_ok=True)
     marker_path.write_text(url, encoding="utf-8")
+    ensure_enough_space(url, target, tmp_path)
 
     if shutil.which("curl"):
         command = [
@@ -197,7 +242,15 @@ def download_direct_file(url: str, target: Path) -> None:
             "-o",
             str(tmp_path),
         ]
-        subprocess.run(command, check=True)
+        try:
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as exc:
+            if exc.returncode == 23:
+                raise DownloadDestinationError(
+                    f"curl could not write to {tmp_path}; {disk_free_text(target)}. "
+                    "Set COMFYUI_MODEL_DIR to a large disk path or prepare packages/comfyui-models locally."
+                ) from exc
+            raise
         tmp_path.replace(target)
         marker_path.unlink(missing_ok=True)
         return
@@ -227,6 +280,16 @@ def download_direct_file(url: str, target: Path) -> None:
 
         tmp_path.replace(target)
         marker_path.unlink(missing_ok=True)
+    except OSError as exc:
+        if getattr(exc, "errno", None) in {errno.ENOSPC, errno.EACCES, errno.EROFS, errno.EDQUOT}:
+            raise DownloadDestinationError(
+                f"Could not write to {tmp_path}: {exc}; {disk_free_text(target)}. "
+                "Set COMFYUI_MODEL_DIR to a large disk path or prepare packages/comfyui-models locally."
+            ) from exc
+        if tmp_path.exists():
+            tmp_path.unlink()
+        marker_path.unlink(missing_ok=True)
+        raise
     except Exception:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -274,6 +337,8 @@ def download_file_item(
                 print(f"[direct] downloading {url} -> {expected}")
                 download_direct_file(url, expected)
                 return expected
+            except DownloadDestinationError as exc:
+                raise SystemExit(str(exc)) from exc
             except Exception as exc:
                 print(f"[direct] failed from {url}: {exc}")
         if repo_id:
@@ -538,8 +603,12 @@ def ensure_ollama_model(raw_item: str | dict[str, Any]) -> None:
 
 
 def download_comfy_models(config: dict[str, Any], items: list[dict[str, Any]], include_optional: bool) -> None:
-    comfy_root = resolve_path(config.get("paths", {}).get("comfyui_dir", "deps/ComfyUI"), ROOT_DIR)
-    models_root = comfy_root / "models"
+    if os.getenv("COMFYUI_MODEL_DIR"):
+        models_root = resolve_path(os.environ["COMFYUI_MODEL_DIR"], ROOT_DIR)
+    else:
+        comfy_root = resolve_path(config.get("paths", {}).get("comfyui_dir", "deps/ComfyUI"), ROOT_DIR)
+        models_root = comfy_root / "models"
+    print(f"[comfyui] model directory: {models_root}")
     for item in items:
         if item.get("optional") and not include_optional:
             print(f"[comfyui] skipping optional model {item.get('id')}")
