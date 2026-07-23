@@ -461,6 +461,55 @@ torch_packages() {
   fi
 }
 
+filter_requirements_without_torch() {
+  local source="$1"
+  local target="$2"
+  if [[ ! -f "$source" ]]; then
+    echo "Requirements file not found: $source" >&2
+    return 1
+  fi
+
+  awk '
+    {
+      stripped = $0
+      sub(/^[[:space:]]+/, "", stripped)
+      lower = tolower(stripped)
+      if (lower ~ /^(torch|torchvision|torchaudio)$/ ||
+          lower ~ /^(torch|torchvision|torchaudio)[[:space:]]/ ||
+          lower ~ /^(torch|torchvision|torchaudio)[<>=~!;\[]/) {
+        next
+      }
+      print
+    }
+  ' "$source" >"$target"
+}
+
+install_comfyui_requirements() {
+  local python_bin="$1"
+  local torch_variant="$2"
+  local source_requirements="$ROOT/deps/ComfyUI/requirements.txt"
+  local requirements_file="$source_requirements"
+
+  if [[ "${COMFYUI_KEEP_REQUIREMENTS_TORCH:-false}" != "true" ]]; then
+    requirements_file="$(mktemp)"
+    filter_requirements_without_torch "$source_requirements" "$requirements_file"
+  fi
+
+  local status=0
+  pip_install_local_first "$python_bin" \
+    "$ROOT/packages/wheels/comfyui" \
+    "$ROOT/packages/wheels/server" \
+    "$ROOT/packages/wheels/torch-$torch_variant" \
+    "$ROOT/packages/wheels/torch-cu124" \
+    "$ROOT/packages/wheels/torch" \
+    -- -r "$requirements_file" || status=$?
+
+  if [[ "$requirements_file" != "$source_requirements" ]]; then
+    rm -f "$requirements_file"
+  fi
+  return "$status"
+}
+
 install_torch() {
   local python_bin="$1"
   if torch_runtime_ok "$python_bin"; then
@@ -820,13 +869,11 @@ install_comfyui() {
     "$ROOT/packages/wheels/torch-cu124" \
     "$ROOT/packages/wheels/torch"
   install_torch "$comfy_python"
-  pip_install_local_first "$comfy_python" \
-    "$ROOT/packages/wheels/comfyui" \
-    "$ROOT/packages/wheels/server" \
-    "$ROOT/packages/wheels/torch-$torch_variant" \
-    "$ROOT/packages/wheels/torch-cu124" \
-    "$ROOT/packages/wheels/torch" \
-    -- -r "$ROOT/deps/ComfyUI/requirements.txt"
+  install_comfyui_requirements "$comfy_python" "$torch_variant"
+  if ! torch_runtime_ok "$comfy_python"; then
+    echo "[comfyui] torch runtime check failed after installing ComfyUI dependencies; reinstalling selected torch wheels" >&2
+    install_torch "$comfy_python"
+  fi
 }
 
 install_linux_prereqs

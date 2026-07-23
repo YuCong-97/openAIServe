@@ -70,6 +70,7 @@ bash scripts/start.sh --components all
 - Ollama registry pulls are disabled by default.
 - ComfyUI clone: GitCode/Gitee first, GitHub fallback.
 - PyTorch wheels: Aliyun/NJU first, official fallback.
+- ComfyUI requirements install filters `torch`, `torchvision`, and `torchaudio`; `install_torch` owns CUDA wheel selection.
 - Local offline bundle: `packages/ollama-linux-*.tar.zst`, `packages/repos/ComfyUI(.tar.gz)`, `packages/wheels/*`, `packages/ollama-models/*`, and `packages/comfyui-models/*` are preferred before network downloads.
 - ComfyUI models: ModelScope direct URLs in `config.yaml`, Hugging Face fallback.
 
