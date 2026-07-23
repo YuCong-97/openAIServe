@@ -868,6 +868,8 @@ fi
 
 if [[ "$START_AFTER" == "true" ]]; then
   bash "$ROOT/scripts/start.sh" --components "$COMPONENTS"
+else
+  echo "Install complete. API server is not running yet."
+  echo "Start it with: bash scripts/start.sh --components $COMPONENTS"
+  echo "Then check: curl http://127.0.0.1:8000/health"
 fi
-
-echo "Install complete."
