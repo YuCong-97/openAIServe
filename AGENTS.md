@@ -68,7 +68,7 @@ Linux full deployment:
 bash scripts/install.sh --components all --profile rtx3090 --download-models --start
 ```
 
-The Linux installer checks for `python3`, `python3-venv`, `git`, and `curl` before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. If the host uses another package manager, install Python 3, venv support, Git, and Curl manually before rerunning.
+The Linux installer checks for `python3`, venv support, `git`, `curl`, and CA certificates before creating virtual environments. It can install missing prerequisites on apt, dnf, yum, pacman, zypper, and apk based systems. On apt systems it retries `apt-get update` and `apt-get install --fix-missing` because some mirrors temporarily serve mismatched indexes during sync. If the host uses another package manager, install Python 3, venv support, Git, Curl, and CA certificates manually before rerunning.
 
 Windows text-only deployment:
 
@@ -197,6 +197,7 @@ curl http://127.0.0.1:8000/v1/videos/generations \
 
 - If `/v1/chat/completions` fails, verify Ollama is running at `http://127.0.0.1:11434`.
 - If Linux deployment fails with `python: command not found`, pull the latest repository version and rerun `bash scripts/install.sh ...`; older installers did not auto-install Python.
+- If apt fails with `File has unexpected size` or `Mirror sync in progress`, pull the latest repository version and rerun. The installer retries apt with `--fix-missing`; if the mirror keeps failing, wait a few minutes or switch `/etc/apt/sources.list` to another Ubuntu mirror.
 - If image/video generation fails, verify ComfyUI is running at `http://127.0.0.1:8188`.
 - If ComfyUI reports missing nodes, update ComfyUI and confirm the installed version includes Wan video nodes.
 - If ComfyUI reports missing models, compare `config.yaml` model file names with files under `deps/ComfyUI/models`.

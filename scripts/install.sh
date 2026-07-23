@@ -53,6 +53,23 @@ run_privileged() {
   fi
 }
 
+apt_install_prereqs() {
+  local packages=(python3 python3-venv git curl ca-certificates)
+  for attempt in 1 2 3; do
+    echo "[system] apt install attempt $attempt/3"
+    run_privileged apt-get clean
+    if run_privileged apt-get -o Acquire::Retries=3 update &&
+      run_privileged apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing "${packages[@]}"; then
+      return
+    fi
+    echo "[system] apt mirror may be syncing; retrying after a short delay" >&2
+    sleep $((attempt * 10))
+  done
+
+  echo "apt failed after retries. Your configured mirror may be mid-sync; run apt-get update later or switch to another Ubuntu mirror, then rerun this script." >&2
+  exit 1
+}
+
 install_linux_prereqs() {
   echo "[system] checking Linux prerequisites"
   local missing="false"
@@ -78,18 +95,17 @@ install_linux_prereqs() {
 
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
-    run_privileged apt-get update
-    run_privileged apt-get install -y python3 python3-venv python3-pip git curl ca-certificates
+    apt_install_prereqs
   elif command -v dnf >/dev/null 2>&1; then
-    run_privileged dnf install -y python3 python3-pip git curl ca-certificates
+    run_privileged dnf install -y python3 git curl ca-certificates
   elif command -v yum >/dev/null 2>&1; then
-    run_privileged yum install -y python3 python3-pip git curl ca-certificates
+    run_privileged yum install -y python3 git curl ca-certificates
   elif command -v pacman >/dev/null 2>&1; then
-    run_privileged pacman -Sy --noconfirm --needed python python-pip git curl ca-certificates
+    run_privileged pacman -Sy --noconfirm --needed python git curl ca-certificates
   elif command -v zypper >/dev/null 2>&1; then
-    run_privileged zypper --non-interactive install python3 python3-pip git curl ca-certificates
+    run_privileged zypper --non-interactive install python3 git curl ca-certificates
   elif command -v apk >/dev/null 2>&1; then
-    run_privileged apk add --no-cache python3 py3-pip py3-virtualenv git curl ca-certificates
+    run_privileged apk add --no-cache python3 py3-virtualenv git curl ca-certificates
   else
     echo "Unsupported Linux package manager. Install python3, python3-venv, git, and curl, then rerun this script." >&2
     exit 1

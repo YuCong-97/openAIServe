@@ -24,6 +24,7 @@ bash scripts/install.sh --components all --profile rtx3090 --download-models --s
 ```
 
 Linux 脚本会先检查 `python3`、`python3-venv`、`git`、`curl`；在 apt/dnf/yum/pacman/zypper/apk 系统上会尝试自动安装缺失项。最小化系统如果没有这些包管理器，请先手动安装 Python 3、venv、Git 和 Curl。
+如果 apt 提示 `File has unexpected size` 或 `Mirror sync in progress`，通常是当前镜像站同步中。最新版脚本会自动清理 apt 缓存并重试；如果仍失败，稍后重跑或切换 `/etc/apt/sources.list` 到其他 Ubuntu 镜像。
 
 只部署文本：
 
